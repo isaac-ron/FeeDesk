@@ -19,15 +19,24 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Body Parser Middleware
-app.use(cors());
+// CORS Configuration from environment variables
+const corsOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : ["http://localhost:5173", "http://localhost:3000", "http://localhost"]; // Fallback for development
+
+// Body Parser Middleware with CORS
+app.use(cors({
+  origin: corsOrigins,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
 
-// Socket.io Setup
+// Socket.io Setup with environment-aware CORS
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:3000"], // React dev ports
+    origin: corsOrigins,
     methods: ["GET", "POST"]
   }
 });
@@ -49,6 +58,11 @@ app.use((req, res, next) => {
 // Basic Route for Testing
 app.get('/', (req, res) => {
   res.send('SchoolPay Enterprise API is running...');
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
 });
 
 // API Routes
@@ -74,7 +88,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Start Server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 // Connect to DB then listen
 connectDB().then(() => {

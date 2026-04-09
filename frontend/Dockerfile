@@ -21,13 +21,19 @@ RUN npm run build
 # Stage 2: Production stage
 FROM nginx:alpine
 
-# Copy custom nginx configuration if needed
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Create non-root user for nginx
+RUN addgroup -g 1001 -S nginx && \
+    adduser -S nginx -u 1001 && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chown -R nginx:nginx /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Create nginx configuration for React Router
+# Set nginx configuration for React Router
 RUN echo 'server { \n\
     listen 80; \n\
     server_name localhost; \n\
@@ -38,15 +44,19 @@ RUN echo 'server { \n\
         try_files $uri $uri/ /index.html; \n\
     } \n\
     \n\
-    location /api { \n\
-        proxy_pass http://backend:5000; \n\
-        proxy_http_version 1.1; \n\
-        proxy_set_header Upgrade $http_upgrade; \n\
-        proxy_set_header Connection "upgrade"; \n\
-        proxy_set_header Host $host; \n\
-        proxy_cache_bypass $http_upgrade; \n\
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ { \n\
+        expires 1y; \n\
+        add_header Cache-Control "public, immutable"; \n\
     } \n\
 }' > /etc/nginx/conf.d/default.conf
+
+# Ensure nginx can write to required directories
+RUN mkdir -p /var/cache/nginx && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx
+
+# Switch to non-root user
+USER nginx
 
 # Expose port
 EXPOSE 80
