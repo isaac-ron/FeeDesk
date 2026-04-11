@@ -1,64 +1,60 @@
-const AfricasTalking = require('africastalking');
+const axios = require('axios');
 
-let smsClient = null;
+const TEXTSMS_BASE_URL = 'https://sms.textsms.co.ke/api/services';
 
 /**
- * Lazily initialise Africa's Talking once env vars are available.
- * Returns null if credentials are missing (e.g. in test environments).
+ * Get TextSMS credentials from environment.
+ * Returns null if not configured (e.g. in test environments).
  */
-const getSmsClient = () => {
-  if (smsClient) return smsClient;
+const getCredentials = () => {
+  const apiKey = process.env.TEXTSMS_API_KEY;
+  const partnerId = process.env.TEXTSMS_PARTNER_ID;
+  const shortcode = process.env.TEXTSMS_SHORTCODE || 'SCHOOLPAY';
 
-  const apiKey = process.env.AFRICASTALKING_API_KEY;
-  const username = process.env.AFRICASTALKING_USERNAME;
-
-  if (!apiKey || !username || apiKey === 'your_api_key') {
-    console.warn('⚠️  [SMS] Africa\'s Talking credentials not configured — SMS sending disabled.');
+  if (!apiKey || !partnerId || apiKey === 'your_api_key') {
+    console.warn('⚠️  [SMS] TextSMS credentials not configured — SMS sending disabled.');
     return null;
   }
 
-  const AT = AfricasTalking({ apiKey, username });
-  smsClient = AT.SMS;
-  return smsClient;
+  return { apiKey, partnerId, shortcode };
 };
 
 /**
- * Normalise a phone number to E.164 format (+254XXXXXXXXX).
+ * Normalise a phone number to 254XXXXXXXXX format (no + prefix — TextSMS expects this).
  * Returns null if the number cannot be parsed (e.g. masked M-PESA numbers).
  */
 const normalisePhone = (phone) => {
   if (!phone) return null;
 
-  // Strip all non-digit characters
   const digits = String(phone).replace(/\D/g, '');
 
   // Reject masked numbers (e.g. "2547*****126" — fewer than 9 meaningful digits)
   if (digits.length < 9) return null;
 
   // Already in 254XXXXXXXXX format
-  if (digits.startsWith('254') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('254') && digits.length === 12) return digits;
 
   // 07XXXXXXXX or 01XXXXXXXX — prefix with 254
   if ((digits.startsWith('07') || digits.startsWith('01')) && digits.length === 10) {
-    return `+254${digits.slice(1)}`;
+    return `254${digits.slice(1)}`;
   }
 
-  // +254XXXXXXXXX already (leading + stripped above)
-  if (digits.startsWith('254') && digits.length >= 12) return `+${digits.slice(0, 12)}`;
+  // Strip leading + if present (already stripped by replace above)
+  if (digits.startsWith('254') && digits.length >= 12) return digits.slice(0, 12);
 
   return null;
 };
 
 /**
- * Send a single SMS.
+ * Send a single SMS via TextSMS Kenya.
  *
- * @param {string} to   - Recipient phone number (any reasonable format)
- * @param {string} message - Message body (max 160 chars for single SMS)
+ * @param {string} to      - Recipient phone number (any reasonable format)
+ * @param {string} message - Message body
  * @returns {Promise<boolean>} true if sent, false if skipped/failed
  */
 const sendSms = async (to, message) => {
-  const client = getSmsClient();
-  if (!client) return false;
+  const creds = getCredentials();
+  if (!creds) return false;
 
   const phone = normalisePhone(to);
   if (!phone) {
@@ -67,19 +63,21 @@ const sendSms = async (to, message) => {
   }
 
   try {
-    const senderId = process.env.AFRICASTALKING_SENDER_ID || 'SCHOOLPAY';
-    const response = await client.send({
-      to: [phone],
+    const response = await axios.post(`${TEXTSMS_BASE_URL}/sendsms/`, {
+      apikey: creds.apiKey,
+      partnerID: creds.partnerId,
       message,
-      from: senderId,
-    });
+      shortcode: creds.shortcode,
+      mobile: phone,
+      pass_type: 'plain',
+    }, { timeout: 15000 });
 
-    const recipient = response.SMSMessageData?.Recipients?.[0];
-    if (recipient?.status === 'Success') {
-      console.log(`✅ [SMS] Sent to ${phone} — messageId: ${recipient.messageId}, cost: ${recipient.cost}`);
+    const result = response.data?.responses?.[0];
+    if (result?.['respose-code'] === 200) {
+      console.log(`✅ [SMS] Sent to ${phone} — messageId: ${result.messageid}`);
       return true;
     } else {
-      console.warn(`⚠️  [SMS] Delivery issue for ${phone}:`, recipient?.status, recipient?.statusCode);
+      console.warn(`⚠️  [SMS] Delivery issue for ${phone}:`, result?.['response-description'], `code: ${result?.['respose-code']}`);
       return false;
     }
   } catch (error) {
@@ -89,7 +87,7 @@ const sendSms = async (to, message) => {
 };
 
 /**
- * Send an M-PESA/bank payment receipt to a guardian.
+ * Send a payment receipt SMS to a guardian.
  *
  * Prefers guardianPhone from the student record over the (possibly masked)
  * transaction phone number.
@@ -144,9 +142,32 @@ const sendBulkReminders = async (recipients) => {
   return { sent, skipped };
 };
 
+/**
+ * Check TextSMS account balance.
+ * @returns {Promise<object|null>} Balance info or null on failure
+ */
+const checkBalance = async () => {
+  const creds = getCredentials();
+  if (!creds) return null;
+
+  try {
+    const response = await axios.post(`${TEXTSMS_BASE_URL}/getbalance/`, {
+      apikey: creds.apiKey,
+      partnerID: creds.partnerId,
+    }, { timeout: 10000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('❌ [SMS] Balance check failed:', error.message);
+    return null;
+  }
+};
+
 module.exports = {
   sendSms,
   sendPaymentReceipt,
   sendFeeReminder,
   sendBulkReminders,
+  checkBalance,
+  normalisePhone,
 };

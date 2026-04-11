@@ -9,17 +9,18 @@ const {
   getStudentByAdmission
 } = require('../controllers/studentController');
 const { protect } = require('../middleware/authMiddleware');
+const { validate, createStudentSchema, updateStudentSchema } = require('../middleware/validate');
 
 // All routes require authentication
 router.use(protect);
 
 router.route('/')
   .get(getStudents)
-  .post(createStudent);
+  .post(validate(createStudentSchema), createStudent);
 
 router.route('/:id')
   .get(getStudent)
-  .put(updateStudent)
+  .put(validate(updateStudentSchema), updateStudent)
   .delete(deleteStudent);
 
 router.get('/admission/:admissionNumber', getStudentByAdmission);

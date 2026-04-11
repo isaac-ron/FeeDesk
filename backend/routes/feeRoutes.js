@@ -9,19 +9,20 @@ const {
   getFeesSummary
 } = require('../controllers/feeController');
 const { protect } = require('../middleware/authMiddleware');
+const { validate, createFeeSchema, updateFeeSchema } = require('../middleware/validate');
 
 // All routes require authentication
 router.use(protect);
 
 router.route('/')
   .get(getFees)
-  .post(createFee);
+  .post(validate(createFeeSchema), createFee);
 
 router.get('/summary/:academicYear', getFeesSummary);
 
 router.route('/:id')
   .get(getFee)
-  .put(updateFee)
+  .put(validate(updateFeeSchema), updateFee)
   .delete(deleteFee);
 
 module.exports = router;

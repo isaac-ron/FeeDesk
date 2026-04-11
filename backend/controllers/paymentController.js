@@ -3,6 +3,7 @@ const Student = require('../models/Student');
 const School = require('../models/School');
 const bankService = require('../services/bankService');
 const { sendPaymentReceipt } = require('../services/smsService');
+const mpesaService = require('../services/mpesaService');
 
 /**
  * @desc    Handle MPESA Validation (Safaricom asks: "Should I process this?")
@@ -242,14 +243,197 @@ const mpesaConfirmation = async (req, res) => {
 };
 
 /**
- * @desc    Register URLs (Helper to set up the callback)
- * @route   POST /api/mpesa/register
+ * @desc    Register C2B validation & confirmation URLs with Safaricom
+ * @route   POST /api/payments/register
  * @access  Private (Admin Only)
  */
 const mpesaRegisterUrl = async (req, res) => {
-    // You can move the Axios/Auth logic here later to make it a one-click button
-    // on your admin dashboard instead of using Postman.
-    res.send("Endpoint reserved for auto-registration logic.");
+  try {
+    const baseUrl = process.env.API_BASE_URL;
+    if (!baseUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'API_BASE_URL environment variable not set',
+      });
+    }
+
+    const validationUrl = `${baseUrl}/api/payments/validation`;
+    const confirmationUrl = `${baseUrl}/api/payments/confirmation`;
+
+    const result = await mpesaService.registerC2bUrls({
+      validationUrl,
+      confirmationUrl,
+    });
+
+    res.json({ success: true, message: 'C2B URLs registered', data: result });
+  } catch (error) {
+    console.error('❌ [MPESA] C2B registration error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * @desc    Initiate STK Push — sends M-PESA payment prompt to customer phone
+ * @route   POST /api/payments/stkpush
+ * @access  Private
+ */
+const stkPush = async (req, res) => {
+  try {
+    const { phoneNumber, amount, admissionNumber, description } = req.body;
+
+    if (!phoneNumber || !amount || !admissionNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'phoneNumber, amount, and admissionNumber are required',
+      });
+    }
+
+    // Verify student exists in this school
+    const schoolId = req.user.role === 'super_admin' ? req.body.school : req.user.school;
+    const student = await Student.findOne({
+      admissionNumber: admissionNumber.trim().toUpperCase(),
+      ...(schoolId ? { school: schoolId } : {}),
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found with this admission number',
+      });
+    }
+
+    const result = await mpesaService.stkPush({
+      phoneNumber,
+      amount: Number(amount),
+      accountRef: admissionNumber.trim().toUpperCase(),
+      description: description || `Fee payment for ${student.name}`,
+    });
+
+    if (result.ResponseCode === '0') {
+      res.json({
+        success: true,
+        message: 'STK Push sent — check your phone',
+        data: {
+          checkoutRequestId: result.CheckoutRequestID,
+          merchantRequestId: result.MerchantRequestID,
+          studentName: student.name,
+          amount: Number(amount),
+        },
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.ResponseDescription || 'STK Push failed',
+        data: result,
+      });
+    }
+  } catch (error) {
+    console.error('❌ [MPESA] STK Push error:', error.response?.data || error.message);
+    const msg = error.response?.data?.errorMessage || error.message;
+    res.status(500).json({ success: false, message: msg });
+  }
+};
+
+/**
+ * @desc    STK Push callback — Safaricom calls this after user completes/cancels payment
+ * @route   POST /api/payments/stkcallback
+ * @access  Public (Safaricom Only)
+ */
+const stkCallback = async (req, res) => {
+  console.log('\n========== STK PUSH CALLBACK ==========');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+
+  try {
+    const parsed = mpesaService.parseStkCallback(req.body);
+
+    if (!parsed) {
+      console.warn('⚠️  [STK] Could not parse callback body');
+      return res.json({ ResultCode: 0, ResultDesc: 'Received' });
+    }
+
+    console.log('[STK] Parsed result:', parsed);
+
+    if (!parsed.success) {
+      console.log(`⚠️  [STK] Payment failed/cancelled: ${parsed.resultDesc}`);
+      return res.json({ ResultCode: 0, ResultDesc: 'Received' });
+    }
+
+    // Payment succeeded — process it the same way as C2B confirmation
+    const transId = parsed.mpesaReceiptNumber;
+    const amount = parsed.amount;
+    const phone = parsed.phoneNumber;
+
+    // Idempotency check
+    const exists = await Transaction.findOne({ transactionId: transId });
+    if (exists) {
+      console.log(`⚠️  [STK] Duplicate ${transId} — skipping`);
+      return res.json({ ResultCode: 0, ResultDesc: 'Duplicate' });
+    }
+
+    // STK Push doesn't include BillRefNumber by default.
+    // The AccountReference we sent in the STK request is the admission number,
+    // but it doesn't come back in the callback. We need to look it up by the
+    // CheckoutRequestID if we stored it, or match by phone number.
+    // For now, we'll create a PENDING transaction that the bursar can reconcile.
+    console.log(`✅ [STK] Payment ${transId}: KES ${amount} from ${phone}`);
+
+    const newTransaction = await Transaction.create({
+      transactionId: transId,
+      amount: parseFloat(amount),
+      source: 'MPESA',
+      type: 'CREDIT',
+      reference: `STK-${parsed.checkoutRequestId}`,
+      status: 'PENDING',
+      paidBy: phone,
+      phoneNumber: phone,
+      metadata: {
+        source: 'STK_PUSH',
+        ...parsed,
+        rawBody: req.body,
+      },
+    });
+
+    console.log(`✅ [STK] Transaction created: ${newTransaction._id} (PENDING — needs reconciliation)`);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('payment_received', {
+        id: newTransaction._id,
+        amount: newTransaction.amount,
+        source: 'MPESA (STK)',
+        time: new Date().toLocaleTimeString(),
+        status: 'PENDING',
+        reference: newTransaction.reference,
+      });
+    }
+
+    res.json({ ResultCode: 0, ResultDesc: 'Processed' });
+  } catch (error) {
+    console.error('❌ [STK] Callback error:', error.message);
+    res.json({ ResultCode: 0, ResultDesc: 'Error but received' });
+  }
+};
+
+/**
+ * @desc    Query the status of an STK Push transaction
+ * @route   POST /api/payments/stkquery
+ * @access  Private
+ */
+const stkQueryStatus = async (req, res) => {
+  try {
+    const { checkoutRequestId } = req.body;
+    if (!checkoutRequestId) {
+      return res.status(400).json({ success: false, message: 'checkoutRequestId is required' });
+    }
+
+    const result = await mpesaService.stkQuery(checkoutRequestId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ [MPESA] STK Query error:', error.response?.data || error.message);
+    const msg = error.response?.data?.errorMessage || error.message;
+    res.status(500).json({ success: false, message: msg });
+  }
 };
 // @desc    Record bank payment
 // @route   POST /api/payments/bank
@@ -802,6 +986,9 @@ module.exports = {
   mpesaValidation,
   mpesaConfirmation,
   mpesaRegisterUrl,
+  stkPush,
+  stkCallback,
+  stkQueryStatus,
   recordBankPayment,
   recordCashPayment,
   getPaymentStats,

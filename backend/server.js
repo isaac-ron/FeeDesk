@@ -7,6 +7,7 @@ const morgan = require("morgan");
 require("dotenv").config();
 const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
+const { apiLimiter, authLimiter } = require('./middleware/securityMiddleware');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,8 +31,12 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Rate limiting
+app.use('/api/', apiLimiter);
+app.use('/api/auth', authLimiter);
 
 // Socket.io Setup with environment-aware CORS
 const io = new Server(server, {
