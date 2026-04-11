@@ -2,6 +2,7 @@ const Transaction = require('../models/Transaction');
 const Student = require('../models/Student');
 const School = require('../models/School');
 const bankService = require('../services/bankService');
+const { sendPaymentReceipt } = require('../services/smsService');
 
 /**
  * @desc    Handle MPESA Validation (Safaricom asks: "Should I process this?")
@@ -186,11 +187,17 @@ const mpesaConfirmation = async (req, res) => {
         console.log('⚠️  [STEP 6] Socket.io not available');
       }
 
-      // 7. Send SMS Receipt (Async - don't await/block response)
-      console.log('[STEP 7] Preparing SMS receipt...');
-      const message = `Dear Parent, received KES ${TransAmount} for ${student.name}. New Balance: KES ${student.currentBalance}. Ref: ${TransID}.`;
-      // sendSms(MSISDN, message); // Uncomment when SMS service is ready
-      console.log('📱 [STEP 7] SMS (would be sent):', message);
+      // 7. Send SMS Receipt (fire-and-forget — do not block Safaricom response)
+      console.log('[STEP 7] Sending SMS receipt...');
+      sendPaymentReceipt({
+        guardianPhone: student.guardianPhone,
+        transactionPhone: MSISDN,
+        studentName: student.name,
+        amount: TransAmount,
+        newBalance: student.currentBalance,
+        reference: TransID,
+        source: 'M-PESA',
+      }).catch((err) => console.error('❌ [STEP 7] SMS error:', err.message));
 
     } else {
       // SUSPENSE ACCOUNT LOGIC
@@ -621,11 +628,17 @@ const bankWebhookHandler = async (req, res) => {
         console.log('✅ [STEP 8] Socket event emitted: payment_received');
       }
       
-      // 10. Send SMS notification (async)
-      console.log('[STEP 9] Preparing SMS receipt...');
-      const message = `Dear Parent, received KES ${paymentData.amount} for ${student.name} via ${provider} Bank. New Balance: KES ${student.currentBalance}. Ref: ${paymentData.transactionId}.`;
-      // sendSms(paymentData.phoneNumber, message); // Uncomment when SMS service is ready
-      console.log('📱 [STEP 9] SMS (would be sent):', message);
+      // 10. Send SMS notification (fire-and-forget)
+      console.log('[STEP 9] Sending SMS receipt...');
+      sendPaymentReceipt({
+        guardianPhone: student.guardianPhone,
+        transactionPhone: paymentData.phoneNumber,
+        studentName: student.name,
+        amount: paymentData.amount,
+        newBalance: student.currentBalance,
+        reference: paymentData.transactionId,
+        source: `${provider} Bank`,
+      }).catch((err) => console.error('❌ [STEP 9] SMS error:', err.message));
       
     } else {
       // SUSPENSE ACCOUNT LOGIC

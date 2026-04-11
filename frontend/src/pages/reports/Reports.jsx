@@ -1,46 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Sidebar from '../../components/layout/Sidebar';
+
+const mockReportData = {
+  summary: {
+    totalRevenue: 487500,
+    totalStudents: 8,
+    collectionRate: 85,
+    outstandingAmount: 40500,
+  },
+  byClass: [
+    { class: 'Form 4', students: 3, collected: 157500, outstanding: 27500, rate: 85 },
+    { class: 'Form 3', students: 2, collected: 150000, outstanding: 8000, rate: 95 },
+    { class: 'Form 2', students: 2, collected: 110000, outstanding: 5000, rate: 96 },
+    { class: 'Form 1', students: 1, collected: 70000, outstanding: 0, rate: 100 },
+  ],
+  byPaymentMethod: [
+    { method: 'M-PESA', amount: 247500, percentage: 51, transactions: 45 },
+    { method: 'Bank Transfer', amount: 190000, percentage: 39, transactions: 28 },
+    { method: 'Cash', amount: 50000, percentage: 10, transactions: 12 },
+  ],
+  topPayers: [
+    { name: 'Mary Wanjiru', admNo: 'ADM-002', class: 'Form 3', paid: 65000, balance: 0 },
+    { name: 'David Ochieng', admNo: 'ADM-003', class: 'Form 4', paid: 48000, balance: -5000 },
+    { name: 'Grace Akinyi', admNo: 'ADM-004', class: 'Form 2', paid: 45000, balance: 2000 },
+    { name: 'Brian Kiprop', admNo: 'ADM-005', class: 'Form 3', paid: 42000, balance: -8000 },
+  ],
+  defaulters: [
+    { name: 'Kevin Mutua', admNo: 'ADM-007', class: 'Form 4', paid: 35000, balance: -15000, lastPayment: '2026-01-10' },
+    { name: 'John Kamau', admNo: 'ADM-001', class: 'Form 4', paid: 37500, balance: -12500, lastPayment: '2026-01-15' },
+    { name: 'Brian Kiprop', admNo: 'ADM-005', class: 'Form 3', paid: 42000, balance: -8000, lastPayment: '2026-01-17' },
+  ],
+};
 
 const Reports = () => {
   const [selectedReport, setSelectedReport] = useState('fee-collection');
   const [dateRange, setDateRange] = useState('last-30-days');
-  const [reportData, setReportData] = useState(null);
-
-  // Mock report data
-  const mockReportData = {
-    summary: {
-      totalRevenue: 487500,
-      totalStudents: 8,
-      collectionRate: 85,
-      outstandingAmount: 40500,
-    },
-    byClass: [
-      { class: 'Form 4', students: 3, collected: 157500, outstanding: 27500, rate: 85 },
-      { class: 'Form 3', students: 2, collected: 150000, outstanding: 8000, rate: 95 },
-      { class: 'Form 2', students: 2, collected: 110000, outstanding: 5000, rate: 96 },
-      { class: 'Form 1', students: 1, collected: 70000, outstanding: 0, rate: 100 },
-    ],
-    byPaymentMethod: [
-      { method: 'M-PESA', amount: 247500, percentage: 51, transactions: 45 },
-      { method: 'Bank Transfer', amount: 190000, percentage: 39, transactions: 28 },
-      { method: 'Cash', amount: 50000, percentage: 10, transactions: 12 },
-    ],
-    topPayers: [
-      { name: 'Mary Wanjiru', admNo: 'ADM-002', class: 'Form 3', paid: 65000, balance: 0 },
-      { name: 'David Ochieng', admNo: 'ADM-003', class: 'Form 4', paid: 48000, balance: -5000 },
-      { name: 'Grace Akinyi', admNo: 'ADM-004', class: 'Form 2', paid: 45000, balance: 2000 },
-      { name: 'Brian Kiprop', admNo: 'ADM-005', class: 'Form 3', paid: 42000, balance: -8000 },
-    ],
-    defaulters: [
-      { name: 'Kevin Mutua', admNo: 'ADM-007', class: 'Form 4', paid: 35000, balance: -15000, lastPayment: '2026-01-10' },
-      { name: 'John Kamau', admNo: 'ADM-001', class: 'Form 4', paid: 37500, balance: -12500, lastPayment: '2026-01-15' },
-      { name: 'Brian Kiprop', admNo: 'ADM-005', class: 'Form 3', paid: 42000, balance: -8000, lastPayment: '2026-01-17' },
-    ],
-  };
-
-  useEffect(() => {
-    setReportData(mockReportData);
-  }, [selectedReport, dateRange]);
+  const [reportData] = useState(mockReportData);
 
   const formatCurrency = (amount) => {
     return `KES ${new Intl.NumberFormat('en-KE').format(amount)}`;
