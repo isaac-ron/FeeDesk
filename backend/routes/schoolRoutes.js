@@ -9,11 +9,18 @@ const {
   deleteSchool,
   getPlatformStats,
   updateSubscription,
-  getSchoolUsers
+  getSchoolUsers,
+  getMySchool,
+  updateMySchool
 } = require('../controllers/schoolController');
 
 // All routes require authentication
 router.use(protect);
+
+// Current user's school settings (must be before /:id routes)
+router.route('/me')
+  .get(getMySchool)
+  .put(updateMySchool);
 
 // Platform statistics (super admin only)
 router.get('/stats/platform', getPlatformStats);

@@ -286,12 +286,12 @@ const Dashboard = () => {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Fee Collection Trends Chart */}
+          {/* Fee Collection Trends - Bar Chart */}
           <div className="lg:col-span-2 rounded-2xl border border-surface-border bg-white p-6 flex flex-col shadow-sm">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="text-text-main text-xl font-bold font-display">Fee Collection Trends</h3>
-                <p className="text-text-muted text-sm mt-1">Last 30 Days</p>
+                <p className="text-text-muted text-sm mt-1">Last 30 Days &middot; Daily breakdown</p>
               </div>
               <div className="text-right">
                 <p className="text-primary text-2xl font-bold tracking-tight font-display">
@@ -300,61 +300,147 @@ const Dashboard = () => {
                 <p className="text-text-muted text-xs uppercase tracking-wider font-bold">Revenue</p>
               </div>
             </div>
-            <div className="flex-1 w-full min-h-[250px] relative">
-              <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 800 200">
-                <defs>
-                  <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style={{stopColor:'#1e3a8a', stopOpacity:0.1}} />
-                    <stop offset="100%" style={{stopColor:'#1e3a8a', stopOpacity:0}} />
-                  </linearGradient>
-                </defs>
-                <line stroke="#e2e8f0" strokeDasharray="4" strokeWidth="1" x1="0" y1="150" x2="800" y2="150" />
-                <line stroke="#e2e8f0" strokeDasharray="4" strokeWidth="1" x1="0" y1="100" x2="800" y2="100" />
-                <line stroke="#e2e8f0" strokeDasharray="4" strokeWidth="1" x1="0" y1="50" x2="800" y2="50" />
-                <path d="M0,150 C100,150 150,80 200,80 C250,80 300,120 400,100 C500,80 550,20 650,40 C720,54 750,10 800,30 V200 H0 Z" fill="url(#gradient)" />
-                <path d="M0,150 C100,150 150,80 200,80 C250,80 300,120 400,100 C500,80 550,20 650,40 C720,54 750,10 800,30" fill="none" stroke="#1e3a8a" strokeLinecap="round" strokeWidth="3" />
-                <circle cx="200" cy="80" r="5" fill="white" stroke="#1e3a8a" strokeWidth="2" />
-                <circle cx="400" cy="100" r="5" fill="white" stroke="#1e3a8a" strokeWidth="2" />
-                <circle className="animate-pulse" cx="650" cy="40" r="6" fill="#1e3a8a" stroke="white" strokeWidth="2" />
-              </svg>
-            </div>
-            <div className="flex justify-between text-text-muted text-xs font-bold mt-4 uppercase tracking-wide border-t border-slate-100 pt-4">
-              {trends.weeks.map((week, index) => (
-                <span key={index}>{week.label}</span>
-              ))}
+            {/* Bar chart */}
+            {(() => {
+              const data = trends.dailyData || [];
+              const maxAmount = Math.max(...data.map(d => d.amount), 1);
+              const avgAmount = data.length > 0 ? data.reduce((s, d) => s + d.amount, 0) / data.length : 0;
+
+              return (
+                <div className="flex-1 w-full min-h-[250px] relative">
+                  {/* Y-axis labels */}
+                  <div className="absolute left-0 top-0 bottom-8 w-16 flex flex-col justify-between text-[10px] text-text-muted font-medium pointer-events-none">
+                    <span>{(maxAmount / 1000).toFixed(0)}K</span>
+                    <span>{(maxAmount / 2000).toFixed(0)}K</span>
+                    <span>0</span>
+                  </div>
+                  {/* Bars container */}
+                  <div className="ml-16 h-full flex flex-col">
+                    <div className="flex-1 relative">
+                      {/* Grid lines */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                        <div className="border-b border-dashed border-slate-200"></div>
+                        <div className="border-b border-dashed border-slate-200"></div>
+                        <div className="border-b border-slate-200"></div>
+                      </div>
+                      {/* Average line */}
+                      <div
+                        className="absolute left-0 right-0 border-t-2 border-dashed border-orange-300 pointer-events-none z-10"
+                        style={{ top: `${((1 - avgAmount / maxAmount) * 100).toFixed(1)}%` }}
+                      >
+                        <span className="absolute -top-4 right-0 text-[10px] text-orange-500 font-bold bg-white px-1 rounded">
+                          Avg {(avgAmount / 1000).toFixed(0)}K
+                        </span>
+                      </div>
+                      {/* Bars */}
+                      <div className="absolute inset-0 flex items-end gap-[2px] px-0.5">
+                        {data.map((d, i) => {
+                          const heightPct = (d.amount / maxAmount) * 100;
+                          const isWeekend = d.day % 7 === 6 || d.day % 7 === 0;
+                          const isMax = d.amount === maxAmount;
+                          const isToday = i === data.length - 1;
+                          return (
+                            <div key={d.day} className="flex-1 flex flex-col items-center group relative" style={{ height: '100%' }}>
+                              {/* Tooltip */}
+                              <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center z-20">
+                                <div className="bg-slate-800 text-white text-[10px] rounded-lg px-2.5 py-1.5 whitespace-nowrap font-medium shadow-lg">
+                                  <span className="font-bold">Day {d.day}</span>
+                                  <br />
+                                  {formatCurrency(d.amount)}
+                                </div>
+                                <div className="size-2 bg-slate-800 rotate-45 -mt-1"></div>
+                              </div>
+                              <div className="w-full mt-auto relative">
+                                <div
+                                  className={`w-full rounded-t-sm transition-all duration-200 group-hover:opacity-90 ${
+                                    isToday
+                                      ? 'bg-green-500 shadow-sm shadow-green-200'
+                                      : isMax
+                                      ? 'bg-primary shadow-sm shadow-blue-200'
+                                      : isWeekend
+                                      ? 'bg-slate-300'
+                                      : 'bg-primary/70'
+                                  }`}
+                                  style={{ height: `${heightPct}%`, minHeight: '2px' }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* X-axis labels */}
+                    <div className="flex justify-between text-text-muted text-[10px] font-bold mt-2 pt-2 border-t border-slate-100 uppercase tracking-wide">
+                      {trends.weeks.map((week, index) => (
+                        <span key={index}>{week.label}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* Legend */}
+            <div className="flex items-center gap-5 mt-3 text-[11px] text-text-muted font-medium">
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary/70"></span>Weekday</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-slate-300"></span>Weekend</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-green-500"></span>Today</span>
+              <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed border-orange-300"></span>Average</span>
             </div>
           </div>
 
-          {/* Payment Methods Chart */}
+          {/* Payment Methods Breakdown */}
           <div className="rounded-2xl border border-surface-border bg-white p-6 flex flex-col shadow-sm">
             <h3 className="text-text-main text-xl font-bold font-display mb-1">Payment Methods</h3>
-            <p className="text-text-muted text-sm mb-6">MPESA vs Bank</p>
-            <div className="flex-1 flex items-center justify-center relative my-4">
-              <div 
-                className="size-56 rounded-full relative" 
+            <p className="text-text-muted text-sm mb-6">Distribution by channel</p>
+            {/* Donut chart */}
+            <div className="flex-1 flex items-center justify-center relative my-2">
+              <div
+                className="size-48 rounded-full relative"
                 style={{background: `conic-gradient(#1e3a8a 0% ${paymentMethods.mpesa.percentage}%, #94a3b8 ${paymentMethods.mpesa.percentage}% 100%)`}}
               >
-                <div className="absolute inset-8 bg-white rounded-full flex flex-col items-center justify-center z-10 shadow-inner">
-                  <span className="text-4xl font-extrabold text-text-main font-display">
-                    {paymentMethods.mpesa.percentage}%
+                <div className="absolute inset-7 bg-white rounded-full flex flex-col items-center justify-center z-10 shadow-inner">
+                  <span className="text-sm text-text-muted font-bold uppercase tracking-wider">Total</span>
+                  <span className="text-lg font-extrabold text-text-main font-display mt-0.5">
+                    {formatNumber((paymentMethods.mpesa.count || 0) + (paymentMethods.bank.count || 0))}
                   </span>
-                  <span className="text-xs text-text-muted font-bold tracking-wider uppercase mt-1">MPESA</span>
+                  <span className="text-[10px] text-text-muted font-medium mt-0.5">transactions</span>
                 </div>
               </div>
             </div>
-            <div className="flex justify-center gap-8 mt-6 pt-4 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-primary"></span>
-                <div className="flex flex-col">
-                  <span className="text-sm text-text-main font-semibold">MPESA</span>
-                  <span className="text-xs text-text-muted">{formatCurrency(paymentMethods.mpesa.amount)}</span>
+            {/* Method details */}
+            <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-slate-100">
+              {/* MPESA */}
+              <div className="flex items-center gap-3">
+                <span className="size-3 rounded-full bg-primary flex-shrink-0"></span>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-text-main font-semibold">MPESA</span>
+                    <span className="text-sm text-text-main font-bold">{paymentMethods.mpesa.percentage}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5">
+                    <div className="bg-primary h-1.5 rounded-full transition-all duration-500" style={{width: `${paymentMethods.mpesa.percentage}%`}}></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[11px] text-text-muted">{formatCurrency(paymentMethods.mpesa.amount)}</span>
+                    <span className="text-[11px] text-text-muted">{formatNumber(paymentMethods.mpesa.count || 0)} txns</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-slate-400"></span>
-                <div className="flex flex-col">
-                  <span className="text-sm text-text-main font-semibold">Bank</span>
-                  <span className="text-xs text-text-muted">{formatCurrency(paymentMethods.bank.amount)}</span>
+              {/* Bank */}
+              <div className="flex items-center gap-3">
+                <span className="size-3 rounded-full bg-slate-400 flex-shrink-0"></span>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-text-main font-semibold">Bank Transfer</span>
+                    <span className="text-sm text-text-main font-bold">{paymentMethods.bank.percentage}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5">
+                    <div className="bg-slate-400 h-1.5 rounded-full transition-all duration-500" style={{width: `${paymentMethods.bank.percentage}%`}}></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[11px] text-text-muted">{formatCurrency(paymentMethods.bank.amount)}</span>
+                    <span className="text-[11px] text-text-muted">{formatNumber(paymentMethods.bank.count || 0)} txns</span>
+                  </div>
                 </div>
               </div>
             </div>

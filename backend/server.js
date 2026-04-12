@@ -8,6 +8,7 @@ require("dotenv").config();
 const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 const { apiLimiter, authLimiter } = require('./middleware/securityMiddleware');
+const { startFeeReminderJob } = require('./jobs/feeReminderJob');
 
 const app = express();
 const server = http.createServer(app);
@@ -78,6 +79,8 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const schoolRoutes = require('./routes/schoolRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const staffRoutes = require('./routes/staffRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
@@ -87,6 +90,8 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/mobile', paymentRoutes); // M-PESA specific endpoints (validation, confirmation, register)
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/schools', schoolRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/staff', staffRoutes);
 
 // Error Handling Middleware (must be last)
 app.use(notFound);
@@ -99,5 +104,8 @@ const PORT = process.env.PORT || 3000;
 connectDB().then(() => {
   server.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+
+    // Start scheduled jobs
+    startFeeReminderJob();
   });
 });

@@ -462,4 +462,61 @@ exports.getSchoolUsers = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get current user's school
+ * @route   GET /api/schools/me
+ * @access  Private
+ */
+exports.getMySchool = async (req, res) => {
+  try {
+    if (!req.user.school) {
+      return res.status(400).json({ success: false, message: 'No school associated with this account' });
+    }
+
+    const school = await School.findById(req.user.school);
+    if (!school) {
+      return res.status(404).json({ success: false, message: 'School not found' });
+    }
+
+    res.json({ success: true, data: school });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * @desc    Update current user's school settings
+ * @route   PUT /api/schools/me
+ * @access  Private (admin, bursar, principal)
+ */
+exports.updateMySchool = async (req, res) => {
+  try {
+    const allowedRoles = ['admin', 'bursar', 'principal', 'super_admin'];
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    if (!req.user.school) {
+      return res.status(400).json({ success: false, message: 'No school associated with this account' });
+    }
+
+    // Prevent changing sensitive fields via this endpoint
+    const { _id, code, isActive, subscriptionStatus, subscriptionExpiry, maxStudents, ...updates } = req.body;
+
+    const school = await School.findByIdAndUpdate(
+      req.user.school,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    if (!school) {
+      return res.status(404).json({ success: false, message: 'School not found' });
+    }
+
+    res.json({ success: true, message: 'Settings updated', data: school });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = exports;

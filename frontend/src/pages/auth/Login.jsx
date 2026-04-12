@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 const Login = () => {
@@ -133,9 +133,9 @@ const Login = () => {
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="password">
                     Password
                   </label>
-                  <a className="text-sm font-medium text-primary hover:text-primary-hover hover:underline" href="#">
+                  <Link className="text-sm font-medium text-primary hover:text-primary-hover hover:underline" to="/forgot-password">
                     Forgot Password?
-                  </a>
+                  </Link>
                 </div>
                 <div className="relative">
                   <input 

@@ -50,6 +50,14 @@ const registerSchema = Joi.object({
   school: objectId,
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+
+const resetPasswordSchema = Joi.object({
+  password: password.required(),
+});
+
 // ============================================
 // STUDENT SCHEMAS
 // ============================================
@@ -135,4 +143,6 @@ module.exports = {
   updateFeeSchema,
   recordBankPaymentSchema,
   recordCashPaymentSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 };
