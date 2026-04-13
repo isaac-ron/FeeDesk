@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
+const requireSuperAdmin = require('../middleware/requireSuperAdmin');
 const {
   getAllSchools,
   getSchool,
@@ -14,7 +15,6 @@ const {
   updateMySchool
 } = require('../controllers/schoolController');
 
-// All routes require authentication
 router.use(protect);
 
 // Current user's school settings (must be before /:id routes)
@@ -23,22 +23,19 @@ router.route('/me')
   .put(updateMySchool);
 
 // Platform statistics (super admin only)
-router.get('/stats/platform', getPlatformStats);
+router.get('/stats/platform', requireSuperAdmin, getPlatformStats);
 
-// School CRUD operations
+// School CRUD operations (super admin only)
 router.route('/')
-  .get(getAllSchools)
-  .post(createSchool);
+  .get(requireSuperAdmin, getAllSchools)
+  .post(requireSuperAdmin, createSchool);
 
 router.route('/:id')
-  .get(getSchool)
-  .put(updateSchool)
-  .delete(deleteSchool);
+  .get(requireSuperAdmin, getSchool)
+  .put(requireSuperAdmin, updateSchool)
+  .delete(requireSuperAdmin, deleteSchool);
 
-// Subscription management
-router.put('/:id/subscription', updateSubscription);
-
-// School users
-router.get('/:id/users', getSchoolUsers);
+router.put('/:id/subscription', requireSuperAdmin, updateSubscription);
+router.get('/:id/users', requireSuperAdmin, getSchoolUsers);
 
 module.exports = router;

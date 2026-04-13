@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const School = require('../models/School');
 const User = require('../models/User');
 const Student = require('../models/Student');
@@ -10,13 +11,6 @@ const Transaction = require('../models/Transaction');
  */
 exports.getAllSchools = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const { isActive, subscriptionStatus, search } = req.query;
     
     let filter = {};
@@ -67,13 +61,6 @@ exports.getAllSchools = async (req, res) => {
  */
 exports.getSchool = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const school = await School.findById(req.params.id);
 
     if (!school) {
@@ -129,37 +116,47 @@ exports.getSchool = async (req, res) => {
  */
 exports.createSchool = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
+    const { adminName, adminEmail, adminPassword, ...schoolData } = req.body;
 
-    // Check for duplicate code
-    const existingSchool = await School.findOne({ 
-      code: req.body.code.toUpperCase() 
-    });
-
-    if (existingSchool) {
+    if (!adminName || !adminEmail || !adminPassword || adminPassword.length < 8) {
       return res.status(400).json({
         success: false,
-        message: 'School code already exists'
+        message: 'Initial admin name, email, and password (min 8 chars) are required'
       });
     }
 
-    const school = await School.create(req.body);
+    const existingSchool = await School.findOne({ code: schoolData.code?.toUpperCase() });
+    if (existingSchool) {
+      return res.status(400).json({ success: false, message: 'School code already exists' });
+    }
+
+    const existingUser = await User.findOne({ email: adminEmail.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'A user with this admin email already exists' });
+    }
+
+    const school = await School.create(schoolData);
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(adminPassword, salt);
+
+    const admin = await User.create({
+      name: adminName,
+      email: adminEmail.toLowerCase(),
+      password: hashedPassword,
+      role: 'admin',
+      school: school._id,
+    });
+
+    const { password: _, ...adminSafe } = admin.toObject();
 
     res.status(201).json({
       success: true,
-      message: 'School created successfully',
-      data: school
+      message: 'School and initial admin created successfully',
+      data: { school, admin: adminSafe }
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -170,13 +167,6 @@ exports.createSchool = async (req, res) => {
  */
 exports.updateSchool = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     // Check if school code is being changed
     if (req.body.code) {
       const existingSchool = await School.findOne({
@@ -225,13 +215,6 @@ exports.updateSchool = async (req, res) => {
  */
 exports.deleteSchool = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const school = await School.findById(req.params.id);
 
     if (!school) {
@@ -265,13 +248,6 @@ exports.deleteSchool = async (req, res) => {
  */
 exports.getPlatformStats = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const [
       schoolStats,
       totalStudents,
@@ -394,13 +370,6 @@ exports.getPlatformStats = async (req, res) => {
  */
 exports.updateSubscription = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const { subscriptionStatus, subscriptionExpiry, maxStudents } = req.body;
 
     const school = await School.findById(req.params.id);
@@ -438,13 +407,6 @@ exports.updateSubscription = async (req, res) => {
  */
 exports.getSchoolUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'super_admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Super admin only.'
-      });
-    }
-
     const users = await User.find({ school: req.params.id })
       .select('-password')
       .sort({ role: 1, name: 1 });

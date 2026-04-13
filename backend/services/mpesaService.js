@@ -1,28 +1,16 @@
 const axios = require('axios');
-
-// ============================================
-// CONFIGURATION
-// ============================================
+const { getMpesaConfig } = require('./platformConfig');
 
 const SANDBOX_BASE = 'https://sandbox.safaricom.co.ke';
 const PRODUCTION_BASE = 'https://api.safaricom.co.ke';
 
-const getBaseUrl = () => {
-  return process.env.MPESA_ENV === 'production' ? PRODUCTION_BASE : SANDBOX_BASE;
-};
-
-const getConfig = () => {
-  const consumerKey = process.env.MPESA_CONSUMER_KEY;
-  const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
-  const shortcode = process.env.MPESA_SHORTCODE;
-  const passkey = process.env.MPESA_PASSKEY;
-  const callbackUrl = process.env.MPESA_CALLBACK_URL;
-
-  if (!consumerKey || !consumerSecret || consumerKey === 'your_consumer_key') {
-    return null;
-  }
-
-  return { consumerKey, consumerSecret, shortcode, passkey, callbackUrl };
+const getConfig = async () => {
+  const cfg = await getMpesaConfig();
+  if (!cfg) return null;
+  return {
+    ...cfg,
+    baseUrl: cfg.environment === 'production' ? PRODUCTION_BASE : SANDBOX_BASE,
+  };
 };
 
 // ============================================
@@ -42,13 +30,13 @@ const getAccessToken = async () => {
     return cachedToken;
   }
 
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const auth = Buffer.from(`${config.consumerKey}:${config.consumerSecret}`).toString('base64');
 
   const response = await axios.get(
-    `${getBaseUrl()}/oauth/v1/generate?grant_type=client_credentials`,
+    `${config.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
     {
       headers: { Authorization: `Basic ${auth}` },
       timeout: 15000,
@@ -134,7 +122,7 @@ const normalisePhone = (phone) => {
  * @returns {Promise<object>} Daraja response with MerchantRequestID & CheckoutRequestID
  */
 const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackUrl }) => {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const timestamp = generateTimestamp();
@@ -159,7 +147,7 @@ const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackU
 
   const headers = await authHeader();
   const response = await axios.post(
-    `${getBaseUrl()}/mpesa/stkpush/v1/processrequest`,
+    `${config.baseUrl}/mpesa/stkpush/v1/processrequest`,
     payload,
     { headers, timeout: 30000 }
   );
@@ -181,7 +169,7 @@ const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackU
  * @returns {Promise<object>} Status result with ResultCode and ResultDesc
  */
 const stkQuery = async (checkoutRequestId) => {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const timestamp = generateTimestamp();
@@ -196,7 +184,7 @@ const stkQuery = async (checkoutRequestId) => {
 
   const headers = await authHeader();
   const response = await axios.post(
-    `${getBaseUrl()}/mpesa/stkpushquery/v1/query`,
+    `${config.baseUrl}/mpesa/stkpushquery/v1/query`,
     payload,
     { headers, timeout: 15000 }
   );
@@ -219,7 +207,7 @@ const stkQuery = async (checkoutRequestId) => {
  * @returns {Promise<object>} Daraja response
  */
 const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 'Completed' }) => {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const payload = {
@@ -233,7 +221,7 @@ const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 
 
   const headers = await authHeader();
   const response = await axios.post(
-    `${getBaseUrl()}/mpesa/c2b/v1/registerurl`,
+    `${config.baseUrl}/mpesa/c2b/v1/registerurl`,
     payload,
     { headers, timeout: 15000 }
   );
@@ -262,7 +250,7 @@ const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 
  * @returns {Promise<object>} Daraja acknowledgement
  */
 const transactionStatus = async ({ transactionId, resultUrl, timeoutUrl }) => {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const payload = {
@@ -280,7 +268,7 @@ const transactionStatus = async ({ transactionId, resultUrl, timeoutUrl }) => {
 
   const headers = await authHeader();
   const response = await axios.post(
-    `${getBaseUrl()}/mpesa/transactionstatus/v1/query`,
+    `${config.baseUrl}/mpesa/transactionstatus/v1/query`,
     payload,
     { headers, timeout: 15000 }
   );

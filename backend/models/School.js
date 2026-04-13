@@ -128,6 +128,20 @@ const schoolSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     }
+  },
+  smsTemplates: {
+    feeReminder: {
+      type: String,
+      default: 'Dear Parent, this is a reminder that {studentName} ({admissionNumber}) has an outstanding fee balance of KES {balance}. Please pay via Paybill {paybill}, Acc: {admissionNumber}. Thank you.'
+    },
+    paymentReceipt: {
+      type: String,
+      default: 'Dear Parent, we confirm receipt of KES {amount} for {studentName} ({admissionNumber}). New balance: KES {balance}. Thank you.'
+    },
+    welcome: {
+      type: String,
+      default: 'Welcome to {schoolName}. Your child {studentName} has been registered with admission number {admissionNumber}.'
+    }
   }
 }, {
   timestamps: true

@@ -81,6 +81,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const schoolRoutes = require('./routes/schoolRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const staffRoutes = require('./routes/staffRoutes');
+const platformSettingsRoutes = require('./routes/platformSettingsRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
@@ -92,6 +93,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/schools', schoolRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/platform/settings', platformSettingsRoutes);
 
 // Error Handling Middleware (must be last)
 app.use(notFound);

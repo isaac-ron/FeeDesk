@@ -1,22 +1,12 @@
 const axios = require('axios');
+const { getSmsCredentials } = require('./platformConfig');
 
 const TEXTSMS_BASE_URL = 'https://sms.textsms.co.ke/api/services';
 
-/**
- * Get TextSMS credentials from environment.
- * Returns null if not configured (e.g. in test environments).
- */
-const getCredentials = () => {
-  const apiKey = process.env.TEXTSMS_API_KEY;
-  const partnerId = process.env.TEXTSMS_PARTNER_ID;
-  const shortcode = process.env.TEXTSMS_SHORTCODE || 'SCHOOLPAY';
-
-  if (!apiKey || !partnerId || apiKey === 'your_api_key') {
-    console.warn('⚠️  [SMS] TextSMS credentials not configured — SMS sending disabled.');
-    return null;
-  }
-
-  return { apiKey, partnerId, shortcode };
+const getCredentials = async () => {
+  const creds = await getSmsCredentials();
+  if (!creds) console.warn('⚠️  [SMS] TextSMS credentials not configured — SMS sending disabled.');
+  return creds;
 };
 
 /**
@@ -53,7 +43,7 @@ const normalisePhone = (phone) => {
  * @returns {Promise<boolean>} true if sent, false if skipped/failed
  */
 const sendSms = async (to, message) => {
-  const creds = getCredentials();
+  const creds = await getCredentials();
   if (!creds) return false;
 
   const phone = normalisePhone(to);
@@ -147,7 +137,7 @@ const sendBulkReminders = async (recipients) => {
  * @returns {Promise<object|null>} Balance info or null on failure
  */
 const checkBalance = async () => {
-  const creds = getCredentials();
+  const creds = await getCredentials();
   if (!creds) return null;
 
   try {

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const NAV_ITEMS = [
+const SCHOOL_NAV = [
   { to: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
   { to: '/students', icon: 'school', label: 'Students' },
   { to: '/finance', icon: 'payments', label: 'Finance' },
@@ -12,8 +12,17 @@ const NAV_ITEMS = [
   { to: '/settings', icon: 'settings', label: 'Settings' },
 ];
 
+const PLATFORM_NAV = [
+  { to: '/admin/dashboard', icon: 'monitoring', label: 'Platform' },
+  { to: '/admin/schools', icon: 'apartment', label: 'Schools' },
+  { to: '/admin/settings', icon: 'tune', label: 'Settings' },
+];
+
 const Sidebar = () => {
   const { user, logout } = useContext(AuthContext);
+  const isSuperAdmin = user?.role === 'super_admin';
+  const NAV_ITEMS = isSuperAdmin ? PLATFORM_NAV : SCHOOL_NAV;
+  const consoleLabel = isSuperAdmin ? 'Platform Console' : 'Admin Console';
 
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
@@ -29,7 +38,7 @@ const Sidebar = () => {
           </div>
           <div className="flex flex-col">
             <h1 className="text-primary text-xl font-extrabold leading-tight tracking-tight font-display">SchoolPay</h1>
-            <p className="text-text-muted text-xs font-medium">Admin Console</p>
+            <p className="text-text-muted text-xs font-medium">{consoleLabel}</p>
           </div>
         </div>
 
