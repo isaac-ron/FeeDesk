@@ -1,5 +1,7 @@
 const Transaction = require('../models/Transaction');
 const Student = require('../models/Student');
+const { allocatePayment } = require('../services/paymentAllocationService');
+const { recomputeStudentBalance } = require('../services/balanceService');
 
 // Helper: returns school filter respecting super_admin bypass
 const schoolFilter = (req) => {
@@ -28,6 +30,7 @@ const getTransactions = async (req, res) => {
 
     const transactions = await Transaction.find(query)
       .populate('student', 'admissionNumber name classLevel')
+      .populate('allocations.studentFee', 'name type')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -101,14 +104,14 @@ const createTransaction = async (req, res) => {
       metadata: metadata || {}
     });
 
-    // Update student balance if student found
+    // Allocate credits to the fee ledger; debits are charges that recompute
+    // the balance without touching StudentFee rows.
     if (student) {
       if (type === 'DEBIT') {
-        student.currentBalance += amount;
+        await recomputeStudentBalance(student._id);
       } else {
-        student.currentBalance -= amount;
+        await allocatePayment({ studentId: student._id, amount, transaction });
       }
-      await student.save();
     }
 
     const populatedTransaction = await Transaction.findById(transaction._id)
@@ -164,17 +167,19 @@ const reverseTransaction = async (req, res) => {
     transaction.status = 'REVERSED';
     await transaction.save();
 
-    // Update student balance if student exists
+    // Unwind the ledger impact: reduce amountPaid on each allocated row,
+    // then recompute the student's balance from the ledger.
     if (transaction.student) {
-      const student = await Student.findById(transaction.student);
-      if (student) {
-        if (transaction.type === 'CREDIT') {
-          student.currentBalance += transaction.amount;
-        } else {
-          student.currentBalance -= transaction.amount;
+      if (transaction.type === 'CREDIT' && Array.isArray(transaction.allocations) && transaction.allocations.length) {
+        const StudentFee = require('../models/StudentFee');
+        for (const alloc of transaction.allocations) {
+          const row = await StudentFee.findById(alloc.studentFee);
+          if (!row) continue;
+          row.amountPaid = Math.max(0, (row.amountPaid || 0) - (alloc.amount || 0));
+          await row.save();
         }
-        await student.save();
       }
+      await recomputeStudentBalance(transaction.student);
     }
 
     res.status(200).json({

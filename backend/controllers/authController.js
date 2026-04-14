@@ -80,7 +80,8 @@ const loginUser = async (req, res) => {
 // @route   GET /api/auth/me
 // @access  Private
 const getMe = async (req, res) => {
-  res.status(200).json(req.user);
+  const user = await req.user.populate('school', 'name');
+  res.status(200).json(user);
 };
 
 // @desc    Request password reset (generates token)

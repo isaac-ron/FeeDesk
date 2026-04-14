@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import api from '../../services/api';
 
 const ROLES = ['admin', 'bursar', 'principal', 'teacher'];
@@ -23,6 +24,7 @@ const ROLE_COLORS = {
 const EMPTY_FORM = { name: '', email: '', password: '', role: 'teacher' };
 
 const Staff = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -115,15 +117,11 @@ const Staff = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-8">
-            <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Staff Management</h2>
-          </div>
+    <>
+      <PageHeader
+        title="Staff"
+        onMenuClick={openSidebar}
+        actions={
           <button
             onClick={openAddModal}
             className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-xl shadow-lg shadow-primary/20 transition-all"
@@ -131,10 +129,9 @@ const Staff = () => {
             <span className="material-symbols-outlined text-[18px]">person_add</span>
             Add Staff
           </button>
-        </header>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        }
+      />
+      <div className="flex-1 overflow-y-auto">
           <div className="p-6 md:p-8 space-y-6">
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -390,8 +387,7 @@ const Staff = () => {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </>
   );
 };
 

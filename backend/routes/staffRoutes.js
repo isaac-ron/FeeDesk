@@ -128,6 +128,14 @@ router.put('/:id', requireManager, validate(updateStaffSchema), async (req, res)
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
+    const isSelf = user._id.toString() === req.user._id.toString();
+    if (isSelf && req.body.isActive === false) {
+      return res.status(400).json({ success: false, message: 'Cannot deactivate your own account' });
+    }
+    if (isSelf && req.body.role && req.body.role !== user.role) {
+      return res.status(400).json({ success: false, message: 'Cannot change your own role' });
+    }
+
     // Don't allow changing password through this endpoint
     const { password, school, ...updates } = req.body;
 

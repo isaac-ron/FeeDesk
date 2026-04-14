@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import platformService from '../../services/platformService';
 
 const formatKES = (n) => `KES ${Number(n || 0).toLocaleString()}`;
@@ -17,6 +18,7 @@ const StatCard = ({ icon, label, value, accent = 'primary' }) => (
 );
 
 const PlatformDashboard = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,14 +31,13 @@ const PlatformDashboard = () => {
   }, []);
 
   return (
-    <div className="flex h-screen bg-background-light">
-      <Sidebar />
+    <>
+      <PageHeader
+        title="Platform Overview"
+        subtitle="Monitor all schools on SchoolPay"
+        onMenuClick={openSidebar}
+      />
       <main className="flex-1 overflow-y-auto p-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-extrabold text-text-main font-display">Platform Overview</h1>
-          <p className="text-text-muted mt-1">Monitor all schools on SchoolPay</p>
-        </header>
-
         {loading && <div className="text-text-muted">Loading platform stats…</div>}
         {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">{error}</div>}
 
@@ -89,7 +90,7 @@ const PlatformDashboard = () => {
           </>
         )}
       </main>
-    </div>
+    </>
   );
 };
 

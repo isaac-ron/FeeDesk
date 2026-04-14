@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import platformService from '../../services/platformService';
 
 const SecretInput = ({ label, name, value, isSet, onChange, placeholder }) => (
@@ -41,6 +42,7 @@ const Section = ({ title, subtitle, children }) => (
 );
 
 const PlatformSettings = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -84,14 +86,13 @@ const PlatformSettings = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background-light">
-      <Sidebar />
+    <>
+      <PageHeader
+        title="Platform Settings"
+        subtitle="Master credentials and branding shared across all schools"
+        onMenuClick={openSidebar}
+      />
       <main className="flex-1 overflow-y-auto p-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-extrabold text-text-main font-display">Platform Settings</h1>
-          <p className="text-text-muted mt-1">Master credentials and branding shared across all schools</p>
-        </header>
-
         {loading && <div className="text-text-muted">Loading settings…</div>}
         {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6">{error}</div>}
 
@@ -138,7 +139,7 @@ const PlatformSettings = () => {
           </form>
         )}
       </main>
-    </div>
+    </>
   );
 };
 

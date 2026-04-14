@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import PageHeader from '../../components/layout/PageHeader';
+import { useOutletContext } from 'react-router-dom';
 import dashboardService from '../../services/dashboardService';
 import { SocketContext } from '../../context/SocketContext';
+import { AuthContext } from '../../context/AuthContext';
 import { 
   mockDashboardStats, 
   mockRecentTransactions, 
@@ -11,7 +13,10 @@ import {
 } from '../../utils/mockData';
 
 const Dashboard = () => {
+  const { openSidebar } = useOutletContext() || {};
   const { socket } = useContext(SocketContext);
+  const { user } = useContext(AuthContext);
+  const schoolName = user?.school?.name || (user?.role === 'super_admin' ? 'All schools' : '');
   const [stats, setStats] = useState(mockDashboardStats);
   const [transactions, setTransactions] = useState(mockRecentTransactions.slice(0, 5));
   const [trends, setTrends] = useState(mockCollectionTrends);
@@ -120,41 +125,33 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-        <div className="flex items-center gap-8">
-          <button className="lg:hidden text-text-main">
-            <span className="material-symbols-outlined">menu</span>
-          </button>
-          <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Overview</h2>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative hidden md:flex items-center w-72 h-11 bg-slate-50 border border-surface-border rounded-full overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
-            <div className="pl-4 pr-2 text-text-muted flex items-center justify-center">
-              <span className="material-symbols-outlined text-[20px]">search</span>
+    <>
+      <PageHeader
+        title="Overview"
+        subtitle={schoolName || undefined}
+        onMenuClick={openSidebar}
+        actions={
+          <>
+            <div className="relative hidden md:flex items-center w-72 h-11 bg-slate-50 border border-surface-border rounded-full overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+              <div className="pl-4 pr-2 text-text-muted flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">search</span>
+              </div>
+              <input
+                className="w-full bg-transparent border-none text-text-main text-sm placeholder:text-text-muted focus:ring-0 focus:outline-none h-full"
+                placeholder="Search student or adm no..."
+              />
             </div>
-            <input 
-              className="w-full bg-transparent border-none text-text-main text-sm placeholder:text-text-muted focus:ring-0 focus:outline-none h-full" 
-              placeholder="Search student or adm no..."
-            />
-          </div>
-          <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10">
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            <span className="hidden sm:inline">Record Payment</span>
-          </button>
-          <button className="size-11 flex items-center justify-center rounded-full bg-white border border-surface-border text-text-muted hover:text-primary hover:bg-slate-50 transition-all relative shadow-sm">
-            <span className="material-symbols-outlined text-[22px]">notifications</span>
-            <span className="absolute top-2.5 right-3 size-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content */}
+            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10">
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              <span className="hidden sm:inline">Record Payment</span>
+            </button>
+            <button className="size-11 flex items-center justify-center rounded-full bg-white border border-surface-border text-text-muted hover:text-primary hover:bg-slate-50 transition-all relative shadow-sm">
+              <span className="material-symbols-outlined text-[22px]">notifications</span>
+              <span className="absolute top-2.5 right-3 size-2 bg-red-500 rounded-full border border-white"></span>
+            </button>
+          </>
+        }
+      />
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
         {/* Live Update Notification */}
         {liveUpdate && (
@@ -503,8 +500,7 @@ const Dashboard = () => {
 
         <div className="h-8"></div>
       </div>
-      </div>
-    </div>
+    </>
   );
 };
 

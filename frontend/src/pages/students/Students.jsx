@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import studentService from '../../services/studentService';
+import api from '../../services/api';
 
 const CLASS_LEVELS = ['Grade 10', 'Grade 11', 'Grade 12'];
 
@@ -15,6 +17,8 @@ const EMPTY_FORM = {
 };
 
 const Students = () => {
+  const { openSidebar } = useOutletContext() || {};
+  const navigate = useNavigate();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,6 +29,11 @@ const Students = () => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState(null);
 
   const fetchStudents = useCallback(async () => {
     try {
@@ -87,20 +96,49 @@ const Students = () => {
     setShowAddModal(true);
   };
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
+  const openImportModal = () => {
+    setImportFile(null);
+    setImportResult(null);
+    setImportError(null);
+    setShowImportModal(true);
+  };
 
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-8">
-            <button className="lg:hidden text-text-main">
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Students</h2>
-          </div>
-          <div className="flex items-center gap-4">
+  const handleImport = async (e) => {
+    e.preventDefault();
+    if (!importFile) return;
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const csv = await importFile.text();
+      const { data } = await api.post('/students/import', { csv });
+      setImportResult(data);
+      fetchStudents();
+    } catch (err) {
+      setImportError(err.response?.data?.message || 'Import failed. Check your file and try again.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const csv = 'admissionNumber,name,classLevel,stream,guardianName,guardianPhone,guardianEmail\nADM-001,John Kamau,Grade 10,East,Jane Kamau,254712345678,jane@example.com\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'students-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Students"
+        onMenuClick={openSidebar}
+        actions={
+          <>
             <div className="relative hidden md:flex items-center w-72 h-11 bg-slate-50 border border-surface-border rounded-full overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
               <div className="pl-4 pr-2 text-text-muted flex items-center justify-center">
                 <span className="material-symbols-outlined text-[20px]">search</span>
@@ -113,17 +151,23 @@ const Students = () => {
               />
             </div>
             <button
+              onClick={openImportModal}
+              className="flex items-center justify-center gap-2 h-11 px-5 bg-white border border-surface-border hover:bg-slate-50 text-text-main text-sm font-bold rounded-full transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">upload_file</span>
+              <span className="hidden sm:inline">Import CSV</span>
+            </button>
+            <button
               onClick={openAddModal}
               className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10"
             >
               <span className="material-symbols-outlined text-[20px]">add</span>
               <span className="hidden sm:inline">Add Student</span>
             </button>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
+          </>
+        }
+      />
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
             <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -257,7 +301,11 @@ const Students = () => {
                   </thead>
                   <tbody className="divide-y divide-surface-border">
                     {students.map((student) => (
-                      <tr key={student._id} className="hover:bg-slate-50 transition-colors">
+                      <tr
+                        key={student._id}
+                        onClick={() => navigate(`/students/${student._id}/ledger`)}
+                        className="hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-bold text-primary">{student.admissionNumber}</span>
                         </td>
@@ -291,8 +339,96 @@ const Students = () => {
               </div>
             )}
           </div>
-        </div>
       </div>
+
+      {/* Import CSV Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border">
+              <h3 className="text-lg font-bold text-text-main font-display">Import students from CSV</h3>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-text-muted"
+              >
+                <span className="material-symbols-outlined text-[22px]">close</span>
+              </button>
+            </div>
+            <form onSubmit={handleImport} className="p-6 space-y-4">
+              <div className="p-4 rounded-lg bg-slate-50 border border-surface-border text-sm text-text-muted space-y-2">
+                <p className="font-semibold text-text-main">Required columns:</p>
+                <p className="font-mono text-xs">admissionNumber, name, classLevel, guardianName, guardianPhone</p>
+                <p>Optional: <span className="font-mono text-xs">stream, guardianEmail</span>. Class must be Grade 10/11/12.</p>
+                <button type="button" onClick={downloadTemplate} className="text-primary font-semibold underline text-xs">
+                  Download template
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-text-muted uppercase mb-1.5">CSV file</label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => { setImportFile(e.target.files[0] || null); setImportResult(null); setImportError(null); }}
+                  className="w-full text-sm"
+                />
+              </div>
+
+              {importError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{importError}</div>
+              )}
+
+              {importResult && (
+                <div className="space-y-2">
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold">
+                    Imported {importResult.createdCount} student{importResult.createdCount === 1 ? '' : 's'}
+                    {importResult.errorCount > 0 && ` · ${importResult.errorCount} row${importResult.errorCount === 1 ? '' : 's'} skipped`}
+                  </div>
+                  {importResult.errors?.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto border border-surface-border rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 font-bold text-text-muted">Row</th>
+                            <th className="px-3 py-2 font-bold text-text-muted">Adm No</th>
+                            <th className="px-3 py-2 font-bold text-text-muted">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importResult.errors.map((err, i) => (
+                            <tr key={i} className="border-t border-surface-border">
+                              <td className="px-3 py-2">{err.row}</td>
+                              <td className="px-3 py-2 font-mono">{err.admissionNumber || '—'}</td>
+                              <td className="px-3 py-2 text-red-600">{err.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(false)}
+                  className="px-5 py-2.5 rounded-lg border border-surface-border text-sm font-medium text-text-main hover:bg-slate-50"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={!importFile || importing}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {importing ? 'Importing…' : 'Upload & import'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Student Modal */}
       {showAddModal && (
@@ -431,7 +567,7 @@ const Students = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

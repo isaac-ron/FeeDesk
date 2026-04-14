@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import platformService from '../../services/platformService';
 
 const emptyForm = {
@@ -16,6 +17,7 @@ const statusColors = {
 };
 
 const Schools = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -89,14 +91,12 @@ const Schools = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background-light">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-8">
-        <header className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-extrabold text-text-main font-display">Schools</h1>
-            <p className="text-text-muted mt-1">Manage all schools on the platform</p>
-          </div>
+    <>
+      <PageHeader
+        title="Schools"
+        subtitle="Manage all schools on the platform"
+        onMenuClick={openSidebar}
+        actions={
           <button
             onClick={() => setShowCreate(true)}
             className="bg-primary text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-primary/90 flex items-center gap-2"
@@ -104,8 +104,9 @@ const Schools = () => {
             <span className="material-symbols-outlined text-[20px]">add</span>
             Register School
           </button>
-        </header>
-
+        }
+      />
+      <main className="flex-1 overflow-y-auto p-8">
         <div className="flex gap-3 mb-6">
           <div className="relative flex-1 max-w-md">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[20px]">search</span>
@@ -276,7 +277,7 @@ const Schools = () => {
           </div>
         )}
       </main>
-    </div>
+    </>
   );
 };
 

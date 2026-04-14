@@ -60,6 +60,21 @@ const transactionSchema = new mongoose.Schema({
   metadata: {
     type: Object, // Stores the raw payload from Daraja/Bank API for audit trails
     default: {}
+  },
+  // How this payment was split across the student's fee-line ledger rows.
+  // Populated by the auto-allocation step after a payment is confirmed.
+  // Sum of allocations[].amount should equal `amount` for fully-allocated
+  // credits; a shorter sum means there's credit left over (overpayment).
+  allocations: {
+    type: [{
+      studentFee: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'StudentFee',
+        required: true
+      },
+      amount: { type: Number, required: true, min: 0 }
+    }],
+    default: []
   }
 }, {
   timestamps: true

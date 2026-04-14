@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import { SocketContext } from '../../context/SocketContext';
 import transactionService from '../../services/transactionService';
 import studentService from '../../services/studentService';
@@ -21,6 +22,7 @@ const EMPTY_PAYMENT_FORM = {
 };
 
 const Finance = () => {
+  const { openSidebar } = useOutletContext() || {};
   const { socket } = useContext(SocketContext);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -159,43 +161,31 @@ const Finance = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white">
-        {/* Live update notification */}
-        {liveUpdate && (
-          <div className={`absolute top-4 right-4 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-white text-sm font-medium slide-in ${
-            liveUpdate.type === 'success' ? 'bg-green-500' : 'bg-orange-500'
-          }`}>
-            <span className="material-symbols-outlined text-[20px]">
-              {liveUpdate.type === 'success' ? 'check_circle' : 'warning'}
-            </span>
-            {liveUpdate.message}
-          </div>
-        )}
-
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-8">
-            <button className="lg:hidden text-text-main">
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Finance</h2>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={openPaymentModal}
-              className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10"
-            >
-              <span className="material-symbols-outlined text-[20px]">add</span>
-              <span className="hidden sm:inline">Record Payment</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
+    <>
+      {liveUpdate && (
+        <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-white text-sm font-medium slide-in ${
+          liveUpdate.type === 'success' ? 'bg-green-500' : 'bg-orange-500'
+        }`}>
+          <span className="material-symbols-outlined text-[20px]">
+            {liveUpdate.type === 'success' ? 'check_circle' : 'warning'}
+          </span>
+          {liveUpdate.message}
+        </div>
+      )}
+      <PageHeader
+        title="Payments"
+        onMenuClick={openSidebar}
+        actions={
+          <button
+            onClick={openPaymentModal}
+            className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10"
+          >
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            <span className="hidden sm:inline">Record Payment</span>
+          </button>
+        }
+      />
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
             <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -315,6 +305,7 @@ const Finance = () => {
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Source</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Paid By</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Allocations</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
@@ -350,6 +341,19 @@ const Finance = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">{txn.paidBy || '—'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">{formatDate(txn.createdAt)}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
+                            {txn.allocations && txn.allocations.length > 0 ? (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700"
+                                title={txn.allocations.map(a => `${a.studentFee?.name || 'Fee'}: ${formatCurrency(a.amount)}`).join('\n')}
+                              >
+                                <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                {txn.allocations.length} item{txn.allocations.length === 1 ? '' : 's'}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-text-muted italic">Unallocated</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                               txn.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                               txn.status === 'PENDING' ? 'bg-orange-100 text-orange-800' :
@@ -367,7 +371,6 @@ const Finance = () => {
               </div>
             )}
           </div>
-        </div>
       </div>
 
       {/* Record Payment Modal */}
@@ -505,7 +508,7 @@ const Finance = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

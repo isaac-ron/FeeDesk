@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import api from '../../services/api';
 
 const Reports = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [selectedReport, setSelectedReport] = useState('fee-collection');
   const [dateRange, setDateRange] = useState('last-30-days');
   const [reportData, setReportData] = useState(null);
@@ -40,19 +42,12 @@ const Reports = () => {
   const handlePrint = () => window.print();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-8">
-            <button className="lg:hidden text-text-main">
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Reports & Analytics</h2>
-          </div>
-          <div className="flex items-center gap-4">
+    <>
+      <PageHeader
+        title="Reports"
+        onMenuClick={openSidebar}
+        actions={
+          <>
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
@@ -73,11 +68,10 @@ const Reports = () => {
               <span className="material-symbols-outlined text-[18px]">print</span>
               Print
             </button>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto">
+          </>
+        }
+      />
+      <div className="flex-1 overflow-y-auto">
           <div className="flex h-full">
             {/* Sidebar - Report Types */}
             <div className="w-72 border-r border-surface-border bg-slate-50 p-6 space-y-2 print:hidden">
@@ -363,8 +357,7 @@ const Reports = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </>
   );
 };
 

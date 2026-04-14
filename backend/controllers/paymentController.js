@@ -4,6 +4,7 @@ const School = require('../models/School');
 const bankService = require('../services/bankService');
 const { sendPaymentReceipt } = require('../services/smsService');
 const mpesaService = require('../services/mpesaService');
+const { allocatePayment } = require('../services/paymentAllocationService');
 
 /**
  * @desc    Handle MPESA Validation (Safaricom asks: "Should I process this?")
@@ -156,15 +157,23 @@ const mpesaConfirmation = async (req, res) => {
     console.log(`   ID: ${newTransaction._id}`);
     console.log(`   Status: ${newTransaction.status}`);
 
-    // 5. Update Student Balance (If student exists)
+    // 5. Allocate payment to StudentFee ledger (also refreshes Student.currentBalance)
     if (student) {
-      console.log('[STEP 5] Updating student balance...');
+      console.log('[STEP 5] Allocating payment to fee ledger...');
       const oldBalance = student.currentBalance;
-      // Decrease balance (Payment In)
-      student.currentBalance -= parseFloat(TransAmount);
-      await student.save();
 
-      console.log('✅ [STEP 5] Balance updated for', student.name);
+      await allocatePayment({
+        studentId: student._id,
+        amount: parseFloat(TransAmount),
+        transaction: newTransaction,
+      });
+
+      // Refresh for SMS receipt + socket emit
+      await student.populate('school');
+      const refreshed = await Student.findById(student._id).select('currentBalance');
+      student.currentBalance = refreshed.currentBalance;
+
+      console.log('✅ [STEP 5] Allocated for', student.name);
       console.log(`   Old Balance: KES ${oldBalance}`);
       console.log(`   Payment: KES ${TransAmount}`);
       console.log(`   New Balance: KES ${student.currentBalance}`);
@@ -494,15 +503,14 @@ const recordBankPayment = async (req, res) => {
     });
     console.log('✅ [STEP 3] Transaction created:', transaction._id);
     
-    console.log('[STEP 4] Updating student balance...');
+    console.log('[STEP 4] Allocating payment to fee ledger...');
     const oldBalance = student.currentBalance;
-    // Update student balance
-    student.currentBalance -= amount;
-    await student.save();
-    console.log('✅ [STEP 4] Balance updated');
+    await allocatePayment({ studentId: student._id, amount, transaction });
+    const refreshed = await Student.findById(student._id).select('currentBalance');
+    console.log('✅ [STEP 4] Allocated');
     console.log(`   Old Balance: KES ${oldBalance}`);
     console.log(`   Payment: KES ${amount}`);
-    console.log(`   New Balance: KES ${student.currentBalance}`);
+    console.log(`   New Balance: KES ${refreshed.currentBalance}`);
     
     const populatedTransaction = await Transaction.findById(transaction._id)
       .populate('student', 'admissionNumber name classLevel');
@@ -567,14 +575,14 @@ const recordCashPayment = async (req, res) => {
     });
     console.log('✅ [STEP 2] Transaction created:', transaction._id);
     
-    console.log('[STEP 3] Updating student balance...');
+    console.log('[STEP 3] Allocating payment to fee ledger...');
     const oldBalance = student.currentBalance;
-    student.currentBalance -= amount;
-    await student.save();
-    console.log('✅ [STEP 3] Balance updated');
+    await allocatePayment({ studentId: student._id, amount, transaction });
+    const refreshed = await Student.findById(student._id).select('currentBalance');
+    console.log('✅ [STEP 3] Allocated');
     console.log(`   Old Balance: KES ${oldBalance}`);
     console.log(`   Payment: KES ${amount}`);
-    console.log(`   New Balance: KES ${student.currentBalance}`);
+    console.log(`   New Balance: KES ${refreshed.currentBalance}`);
     
     const populatedTransaction = await Transaction.findById(transaction._id)
       .populate('student', 'admissionNumber name classLevel');
@@ -784,14 +792,21 @@ const bankWebhookHandler = async (req, res) => {
     
     console.log('✅ [STEP 6] Transaction created:', newTransaction._id);
     
-    // 8. Update student balance if student found
+    // 8. Allocate payment to fee ledger (refreshes currentBalance)
     if (student) {
-      console.log('[STEP 7] Updating student balance...');
+      console.log('[STEP 7] Allocating payment to fee ledger...');
       const oldBalance = student.currentBalance;
-      student.currentBalance -= paymentData.amount;
-      await student.save();
-      
-      console.log('✅ [STEP 7] Balance updated for', student.name);
+
+      await allocatePayment({
+        studentId: student._id,
+        amount: paymentData.amount,
+        transaction: newTransaction,
+      });
+
+      const refreshed = await Student.findById(student._id).select('currentBalance');
+      student.currentBalance = refreshed.currentBalance;
+
+      console.log('✅ [STEP 7] Allocated for', student.name);
       console.log(`   Old Balance: KES ${oldBalance}`);
       console.log(`   Payment: KES ${paymentData.amount}`);
       console.log(`   New Balance: KES ${student.currentBalance}`);

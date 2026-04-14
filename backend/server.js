@@ -82,10 +82,18 @@ const schoolRoutes = require('./routes/schoolRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const staffRoutes = require('./routes/staffRoutes');
 const platformSettingsRoutes = require('./routes/platformSettingsRoutes');
+const termRoutes = require('./routes/termRoutes');
+const feeStructureRoutes = require('./routes/feeStructureRoutes');
+const studentFeeRoutes = require('./routes/studentFeeRoutes');
+const smsRoutes = require('./routes/smsRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/fees', feeRoutes);
+app.use('/api/terms', termRoutes);
+app.use('/api/fee-structures', feeStructureRoutes);
+app.use('/api/student-fees', studentFeeRoutes);
+app.use('/api/sms', smsRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/mobile', paymentRoutes); // M-PESA specific endpoints (validation, confirmation, register)

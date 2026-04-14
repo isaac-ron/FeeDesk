@@ -6,8 +6,10 @@ const {
   createStudent,
   updateStudent,
   deleteStudent,
-  getStudentByAdmission
+  getStudentByAdmission,
+  importStudents
 } = require('../controllers/studentController');
+const { getStudentLedger } = require('../controllers/studentFeeController');
 const { protect } = require('../middleware/authMiddleware');
 const { validate, createStudentSchema, updateStudentSchema } = require('../middleware/validate');
 
@@ -18,11 +20,14 @@ router.route('/')
   .get(getStudents)
   .post(validate(createStudentSchema), createStudent);
 
+router.post('/import', importStudents);
+
 router.route('/:id')
   .get(getStudent)
   .put(validate(updateStudentSchema), updateStudent)
   .delete(deleteStudent);
 
 router.get('/admission/:admissionNumber', getStudentByAdmission);
+router.get('/:studentId/ledger', getStudentLedger);
 
 module.exports = router;

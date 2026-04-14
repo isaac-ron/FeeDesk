@@ -3,6 +3,7 @@ const router = express.Router();
 const Transaction = require('../models/Transaction');
 const Student = require('../models/Student');
 const Fee = require('../models/Fee');
+const SmsLog = require('../models/SmsLog');
 const { protect } = require('../middleware/authMiddleware');
 
 // @desc    Get dashboard statistics
@@ -84,8 +85,8 @@ router.get('/stats', protect, async (req, res) => {
       status: 'Active'
     });
 
-    // Mock SMS count (you can implement actual tracking later)
-    const smsSent = 1204;
+    const smsFilter = req.user.role === 'super_admin' ? {} : { school: req.user.school };
+    const smsSent = await SmsLog.countDocuments({ ...smsFilter, status: 'SENT' });
 
     res.json({
       totalCollectedToday,

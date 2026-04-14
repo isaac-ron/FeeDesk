@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import Sidebar from '../../components/layout/Sidebar';
+import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../../components/layout/PageHeader';
 import api from '../../services/api';
 
 const TABS = [
@@ -10,6 +11,7 @@ const TABS = [
 ];
 
 const Settings = () => {
+  const { openSidebar } = useOutletContext() || {};
   const [activeTab, setActiveTab] = useState('school');
   const [school, setSchool] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -283,30 +285,26 @@ const Settings = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-        {/* Header */}
-        <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
-          <h2 className="text-text-main text-2xl font-bold leading-tight tracking-tight font-display">Settings</h2>
-          {school && (
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                school.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-                school.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                <span className="material-symbols-outlined text-[14px]">
-                  {school.subscriptionStatus === 'ACTIVE' ? 'check_circle' : school.subscriptionStatus === 'TRIAL' ? 'hourglass_empty' : 'error'}
-                </span>
-                {school.subscriptionStatus}
+    <>
+      <PageHeader
+        title="Settings"
+        onMenuClick={openSidebar}
+        actions={
+          school && (
+            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
+              school.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+              school.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              <span className="material-symbols-outlined text-[14px]">
+                {school.subscriptionStatus === 'ACTIVE' ? 'check_circle' : school.subscriptionStatus === 'TRIAL' ? 'hourglass_empty' : 'error'}
               </span>
-            </div>
-          )}
-        </header>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8">
+              {school.subscriptionStatus}
+            </span>
+          )
+        }
+      />
+      <div className="flex-1 overflow-y-auto p-8">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -373,8 +371,7 @@ const Settings = () => {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </>
   );
 };
 
