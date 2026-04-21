@@ -76,10 +76,19 @@ const schoolSchema = new mongoose.Schema({
       merchantId: String,
       accountNumber: String,
       callbackUrl: String,
-      // Bank-specific fields
-      consumerKey: String, // For Equity Jenga API
+      // Equity Jenga (Finserve) API
+      username: String,
+      password: String,
+      publicKey: String,  // Jenga PEM — used to verify IPN signatures
+      privateKey: String, // Merchant PEM — used to sign outbound transfers
+      // Webhook-level Basic Auth (Jenga Account Alerts push these creds)
+      webhookUsername: String,
+      webhookPassword: String,
+      // KCB BUNI
+      consumerKey: String,
       consumerSecret: String,
-      organizationCode: String, // For KCB
+      kcbPublicKey: String, // KCB PEM — used to verify IPN signatures
+      organizationCode: String,
       accessToken: String // Cached token
     },
     lastSync: Date,
