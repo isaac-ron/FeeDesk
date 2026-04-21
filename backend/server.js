@@ -16,6 +16,13 @@ const { startSmsWorker } = require('./workers/smsWorker');
 const app = express();
 const server = http.createServer(app);
 
+// Render (and most PaaS) terminate TLS at a reverse proxy and forward the
+// real client IP in X-Forwarded-For. Without this, express-rate-limit
+// throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and falls back to keying by
+// the proxy IP — which rate-limits *everyone* as one client. Trusting one
+// hop is the minimum needed and avoids IP-spoofing via injected XFF.
+app.set('trust proxy', 1);
+
 // Security Middleware
 app.use(helmet());
 
