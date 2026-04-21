@@ -1,7 +1,18 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { TermProvider } from './context/TermContext';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,       // 30s before data is considered stale
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 import Layout from './components/layout/Layout';
 import Login from './pages/auth/Login';
 import ForgotPassword from './pages/auth/ForgotPassword';
@@ -15,6 +26,8 @@ import Terms from './pages/terms/Terms';
 import Reports from './pages/reports/Reports';
 import Staff from './pages/staff/Staff';
 import Settings from './pages/settings/Settings';
+import AuditLogs from './pages/audit/AuditLogs';
+import Receipt from './pages/receipts/Receipt';
 import SmsReminders from './pages/sms/SmsReminders';
 import PlatformDashboard from './pages/admin/PlatformDashboard';
 import AdminSchools from './pages/admin/Schools';
@@ -25,6 +38,7 @@ import './App.css';
 
 function App() {
   return (
+    <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TermProvider>
         <SocketProvider>
@@ -45,6 +59,8 @@ function App() {
                 <Route path="reports" element={<BlockSuperAdmin><Reports /></BlockSuperAdmin>} />
                 <Route path="staff" element={<BlockSuperAdmin><Staff /></BlockSuperAdmin>} />
                 <Route path="settings" element={<BlockSuperAdmin><Settings /></BlockSuperAdmin>} />
+                <Route path="audit-logs" element={<BlockSuperAdmin><AuditLogs /></BlockSuperAdmin>} />
+                <Route path="receipts/:transactionId" element={<BlockSuperAdmin><Receipt /></BlockSuperAdmin>} />
 
                 <Route path="admin/dashboard" element={<RequireSuperAdmin><PlatformDashboard /></RequireSuperAdmin>} />
                 <Route path="admin/schools" element={<RequireSuperAdmin><AdminSchools /></RequireSuperAdmin>} />
@@ -55,6 +71,7 @@ function App() {
         </SocketProvider>
       </TermProvider>
     </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

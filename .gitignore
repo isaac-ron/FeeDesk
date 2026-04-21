@@ -46,3 +46,7 @@ Thumbs.db
 # Nested duplicate folder (cleanup later)
 frontend/schoolpay-enterprise/
 
+# Local scratch scripts (contain hardcoded test data / real phone numbers)
+backend/scratch/
+scratch/
+

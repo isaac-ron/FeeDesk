@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
-import studentService from '../../services/studentService';
-import api from '../../services/api';
+import { useStudents, useCreateStudent, useImportStudents } from '../../hooks/useStudents';
 
 const CLASS_LEVELS = ['Grade 10', 'Grade 11', 'Grade 12'];
 
@@ -19,44 +18,41 @@ const EMPTY_FORM = {
 const Students = () => {
   const { openSidebar } = useOutletContext() || {};
   const navigate = useNavigate();
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterClass, setFilterClass] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All');
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState(null);
-  const [formLoading, setFormLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
-  const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState(null);
 
-  const fetchStudents = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const params = {};
-      if (filterStatus !== 'All') params.status = filterStatus;
-      if (filterClass !== 'All') params.classLevel = filterClass;
-      if (searchQuery.trim()) params.search = searchQuery.trim();
-      const data = await studentService.getStudents(params);
-      setStudents(data.data || []);
-    } catch (err) {
-      console.error('Failed to fetch students:', err);
-      setError('Failed to load students. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [filterStatus, filterClass, searchQuery]);
+  // Debounce search input
+  const [searchTimer, setSearchTimer] = useState(null);
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    if (searchTimer) clearTimeout(searchTimer);
+    setSearchTimer(setTimeout(() => setDebouncedSearch(val.trim()), 300));
+  };
 
-  useEffect(() => {
-    const timer = setTimeout(fetchStudents, 300);
-    return () => clearTimeout(timer);
-  }, [fetchStudents]);
+  const queryParams = useMemo(() => {
+    const p = {};
+    if (filterStatus !== 'All') p.status = filterStatus;
+    if (filterClass !== 'All') p.classLevel = filterClass;
+    if (debouncedSearch) p.search = debouncedSearch;
+    return p;
+  }, [filterStatus, filterClass, debouncedSearch]);
+
+  const { data, isLoading: loading, error: queryError, refetch: fetchStudents } = useStudents(queryParams);
+  const students = data?.data || [];
+  const error = queryError ? 'Failed to load students. Please try again.' : null;
+
+  const createMutation = useCreateStudent();
+  const importMutation = useImportStudents();
 
   const stats = {
     totalStudents: students.length,
@@ -77,18 +73,15 @@ const Students = () => {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     setFormError(null);
-    setFormLoading(true);
     try {
-      await studentService.createStudent(formData);
+      await createMutation.mutateAsync(formData);
       setShowAddModal(false);
       setFormData(EMPTY_FORM);
-      fetchStudents();
     } catch (err) {
       setFormError(err.response?.data?.message || 'Failed to add student. Please try again.');
-    } finally {
-      setFormLoading(false);
     }
   };
+  const formLoading = createMutation.isPending;
 
   const openAddModal = () => {
     setFormData(EMPTY_FORM);
@@ -106,20 +99,17 @@ const Students = () => {
   const handleImport = async (e) => {
     e.preventDefault();
     if (!importFile) return;
-    setImporting(true);
     setImportError(null);
     setImportResult(null);
     try {
       const csv = await importFile.text();
-      const { data } = await api.post('/students/import', { csv });
-      setImportResult(data);
-      fetchStudents();
+      const result = await importMutation.mutateAsync(csv);
+      setImportResult(result);
     } catch (err) {
       setImportError(err.response?.data?.message || 'Import failed. Check your file and try again.');
-    } finally {
-      setImporting(false);
     }
   };
+  const importing = importMutation.isPending;
 
   const downloadTemplate = () => {
     const csv = 'admissionNumber,name,classLevel,stream,guardianName,guardianPhone,guardianEmail\nADM-001,John Kamau,Grade 10,East,Jane Kamau,254712345678,jane@example.com\n';
@@ -147,7 +137,7 @@ const Students = () => {
                 className="w-full bg-transparent border-none text-text-main text-sm placeholder:text-text-muted focus:ring-0 focus:outline-none h-full"
                 placeholder="Search student or adm no..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
               />
             </div>
             <button

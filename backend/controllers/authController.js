@@ -1,7 +1,35 @@
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
+const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
+
+// Cookie options for the refresh token. httpOnly prevents JS access,
+// sameSite + secure protect against CSRF in production.
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/api/auth', // only sent to auth endpoints
+};
+
+// Helper: sends access token in body + refresh token as httpOnly cookie
+const sendTokens = (res, user) => {
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
+
+  res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    school: user.school,
+    token: accessToken,
+  };
+};
 
 // @desc    Register new user (For initial setup)
 // @route   POST /api/auth/register
@@ -14,37 +42,28 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Please add all fields' });
     }
 
-    // Check if user exists
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create user
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: role || 'bursar'
+      role: role || 'bursar',
     });
 
     if (user) {
-      res.status(201).json({
-        _id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user._id)
-      });
+      res.status(201).json(sendTokens(res, user));
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -56,24 +75,67 @@ const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check for user email
     const user = await User.findOne({ email }).select('+password');
 
-    if (user && (await bcrypt.compare(password, user.password))) {
-      res.json({
-        _id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user._id)
-      });
-    } else {
-      res.status(401).json({ message: 'Invalid credentials' });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'Account is deactivated' });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    res.json(sendTokens(res, user));
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
+};
+
+// @desc    Refresh the access token using the refresh cookie
+// @route   POST /api/auth/refresh
+// @access  Public (cookie-authenticated)
+const refreshAccessToken = async (req, res) => {
+  try {
+    const token = req.cookies?.refreshToken;
+    if (!token) {
+      return res.status(401).json({ message: 'No refresh token' });
+    }
+
+    const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (err) {
+      // Clear the stale cookie so the client doesn't keep retrying
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ message: 'Refresh token expired or invalid' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isActive) {
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ message: 'User not found or deactivated' });
+    }
+
+    // Rotate: issue new access + refresh tokens
+    res.json(sendTokens(res, user));
+  } catch (error) {
+    console.error('Refresh error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Log out — clear the refresh cookie
+// @route   POST /api/auth/logout
+// @access  Public
+const logoutUser = async (req, res) => {
+  res.clearCookie('refreshToken', { path: '/api/auth' });
+  res.json({ message: 'Logged out' });
 };
 
 // @desc    Get user data
@@ -94,29 +156,22 @@ const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      // Return success even if user not found to prevent email enumeration
       return res.status(200).json({
         message: 'If an account with that email exists, a reset link has been sent.',
       });
     }
 
-    // Generate a random reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
-
-    // Hash the token before storing (so DB compromise doesn't leak valid tokens)
     const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
     await user.save();
 
-    // Build reset URL for the frontend
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
 
-    // TODO: Send email with resetUrl via an email provider.
-    // For now, log the URL in development so the flow can be tested.
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`🔑 [AUTH] Password reset link for ${email}: ${resetUrl}`);
+      console.log(`[AUTH] Password reset link for ${email}: ${resetUrl}`);
     }
 
     res.status(200).json({
@@ -136,7 +191,6 @@ const resetPassword = async (req, res) => {
   const { token } = req.params;
 
   try {
-    // Hash the incoming token to compare with stored hash
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
     const user = await User.findOne({
@@ -148,7 +202,6 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'Invalid or expired reset token' });
     }
 
-    // Set new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
     user.resetPasswordToken = undefined;
@@ -165,6 +218,8 @@ const resetPassword = async (req, res) => {
 module.exports = {
   registerUser,
   loginUser,
+  refreshAccessToken,
+  logoutUser,
   getMe,
   forgotPassword,
   resetPassword,

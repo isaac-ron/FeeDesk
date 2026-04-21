@@ -1,115 +1,65 @@
 import React, { useState, useEffect, useContext } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/layout/PageHeader';
 import { useOutletContext } from 'react-router-dom';
-import dashboardService from '../../services/dashboardService';
+import { useDashboardStats, useRecentTransactions, useCollectionTrends, usePaymentMethodsBreakdown } from '../../hooks/useDashboard';
 import { SocketContext } from '../../context/SocketContext';
 import { AuthContext } from '../../context/AuthContext';
-import { 
-  mockDashboardStats, 
-  mockRecentTransactions, 
-  mockCollectionTrends, 
+import {
+  mockDashboardStats,
+  mockRecentTransactions,
+  mockCollectionTrends,
   mockPaymentMethods,
-  mockStudentAvatars 
+  mockStudentAvatars
 } from '../../utils/mockData';
 
 const Dashboard = () => {
   const { openSidebar } = useOutletContext() || {};
   const { socket } = useContext(SocketContext);
   const { user } = useContext(AuthContext);
+  const queryClient = useQueryClient();
   const schoolName = user?.school?.name || (user?.role === 'super_admin' ? 'All schools' : '');
-  const [stats, setStats] = useState(mockDashboardStats);
-  const [transactions, setTransactions] = useState(mockRecentTransactions.slice(0, 5));
-  const [trends, setTrends] = useState(mockCollectionTrends);
-  const [paymentMethods, setPaymentMethods] = useState(mockPaymentMethods);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [liveUpdate, setLiveUpdate] = useState(null);
 
+  const { data: stats = mockDashboardStats, isLoading: statsLoading, error: statsError } = useDashboardStats();
+  const { data: transactions = mockRecentTransactions.slice(0, 5), isLoading: txnLoading } = useRecentTransactions(5);
+  const { data: trends = mockCollectionTrends } = useCollectionTrends(30);
+  const { data: paymentMethods = mockPaymentMethods } = usePaymentMethodsBreakdown();
+
+  const loading = statsLoading || txnLoading;
+  const error = statsError ? 'Using mock data - API not connected' : null;
+
   useEffect(() => {
-    fetchDashboardData();
-    
-    // Set up Socket.io listeners for real-time updates
-    if (socket) {
-      console.log('Setting up socket listeners for dashboard');
-      
-      socket.on('payment_received', (paymentData) => {
-        console.log('🔴 LIVE: Payment received!', paymentData);
-        
-        // Show live update notification
-        setLiveUpdate({
-          type: 'success',
-          message: `${paymentData.source} payment of KES ${paymentData.amount.toLocaleString()} received from ${paymentData.studentName}`,
-          time: Date.now()
-        });
-        
-        // Add transaction to the top of the list
-        setTransactions(prev => [paymentData, ...prev.slice(0, 4)]);
-        
-        // Update stats - increment today's collection
-        setStats(prev => ({
-          ...prev,
-          totalCollectedToday: prev.totalCollectedToday + paymentData.amount
-        }));
-        
-        // Refresh full data after 3 seconds
-        setTimeout(() => {
-          fetchDashboardData();
-          setLiveUpdate(null);
-        }, 3000);
-      });
-      
-      socket.on('unknown_payment', (paymentData) => {
-        console.log('⚠️ LIVE: Unknown payment received!', paymentData);
-        
-        setLiveUpdate({
-          type: 'warning',
-          message: `Suspense: KES ${paymentData.amount.toLocaleString()} received for unknown student (Ref: ${paymentData.reference})`,
-          time: Date.now()
-        });
-        
-        setTimeout(() => {
-          setLiveUpdate(null);
-        }, 5000);
-      });
-      
-      return () => {
-        socket.off('payment_received');
-        socket.off('unknown_payment');
-      };
-    }
-  }, [socket]);
+    if (!socket) return;
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      console.log('📊 Fetching dashboard data from API...');
-      
-      // Try to fetch real data from API
-      const [statsData, transactionsData, trendsData, paymentData] = await Promise.all([
-        dashboardService.getDashboardStats(),
-        dashboardService.getRecentTransactions(5),
-        dashboardService.getCollectionTrends(30),
-        dashboardService.getPaymentMethodsBreakdown()
-      ]);
-
-      console.log('✅ Dashboard data loaded:', {
-        stats: statsData,
-        transactionCount: transactionsData.length
+    const handlePayment = (paymentData) => {
+      setLiveUpdate({
+        type: 'success',
+        message: `${paymentData.source} payment of KES ${paymentData.amount.toLocaleString()} received from ${paymentData.studentName}`,
+        time: Date.now()
       });
-      
-      setStats(statsData);
-      setTransactions(transactionsData);
-      setTrends(trendsData);
-      setPaymentMethods(paymentData);
-      setError(null);
-    } catch (error) {
-      console.log('⚠️ API not available, using mock data', error);
-      // Continue using mock data if API fails
-      setError('Using mock data - API not connected');
-    } finally {
-      setLoading(false);
-    }
-  };
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        setLiveUpdate(null);
+      }, 3000);
+    };
+
+    const handleUnknown = (paymentData) => {
+      setLiveUpdate({
+        type: 'warning',
+        message: `Suspense: KES ${paymentData.amount.toLocaleString()} received for unknown student (Ref: ${paymentData.reference})`,
+        time: Date.now()
+      });
+      setTimeout(() => setLiveUpdate(null), 5000);
+    };
+
+    socket.on('payment_received', handlePayment);
+    socket.on('unknown_payment', handleUnknown);
+    return () => {
+      socket.off('payment_received', handlePayment);
+      socket.off('unknown_payment', handleUnknown);
+    };
+  }, [socket, queryClient]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-KE', {

@@ -1,9 +1,10 @@
-import { useState, useEffect, useContext, useCallback } from 'react';
+import { useState, useEffect, useContext, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/layout/PageHeader';
 import { SocketContext } from '../../context/SocketContext';
-import transactionService from '../../services/transactionService';
-import studentService from '../../services/studentService';
+import { useTransactions, useRecordCashPayment, useRecordBankPayment } from '../../hooks/useTransactions';
+import { useStudentByAdmission } from '../../hooks/useStudents';
 
 const SOURCE_ICONS = {
   MPESA: { icon: 'phone_iphone', color: 'text-green-600 bg-green-50' },
@@ -24,9 +25,7 @@ const EMPTY_PAYMENT_FORM = {
 const Finance = () => {
   const { openSidebar } = useOutletContext() || {};
   const { socket } = useContext(SocketContext);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState('All');
   const [filterSource, setFilterSource] = useState('All');
   const [liveUpdate, setLiveUpdate] = useState(null);
@@ -34,31 +33,29 @@ const Finance = () => {
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM);
-  const [studentLookup, setStudentLookup] = useState(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
-  const [paymentLoading, setPaymentLoading] = useState(false);
 
-  const fetchTransactions = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const params = {};
-      if (filterType !== 'All') params.type = filterType;
-      if (filterSource !== 'All') params.source = filterSource;
-      const data = await transactionService.getTransactions(params);
-      setTransactions(data.data || []);
-    } catch (err) {
-      console.error('Failed to fetch transactions:', err);
-      setError('Failed to load transactions. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  // Debounced admission lookup
+  const [debouncedAdm, setDebouncedAdm] = useState('');
+  const [admTimer, setAdmTimer] = useState(null);
+
+  const queryParams = useMemo(() => {
+    const p = {};
+    if (filterType !== 'All') p.type = filterType;
+    if (filterSource !== 'All') p.source = filterSource;
+    return p;
   }, [filterType, filterSource]);
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+  const { data: txnData, isLoading: loading, error: txnError } = useTransactions(queryParams);
+  const transactions = txnData?.data || [];
+  const error = txnError ? 'Failed to load transactions. Please try again.' : null;
+
+  const { data: lookupData, isFetching: lookupLoading } = useStudentByAdmission(debouncedAdm);
+  const studentLookup = lookupData?.data || null;
+
+  const cashMutation = useRecordCashPayment();
+  const bankMutation = useRecordBankPayment();
+  const paymentLoading = cashMutation.isPending || bankMutation.isPending;
 
   // Real-time payment updates
   useEffect(() => {
@@ -69,31 +66,11 @@ const Finance = () => {
         message: `New payment of KES ${paymentData.amount?.toLocaleString()} from ${paymentData.studentName}`,
       });
       setTimeout(() => setLiveUpdate(null), 5000);
-      fetchTransactions();
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     };
     socket.on('payment_received', handlePayment);
     return () => socket.off('payment_received', handlePayment);
-  }, [socket, fetchTransactions]);
-
-  // Student lookup by admission number (debounced)
-  useEffect(() => {
-    if (!paymentForm.admissionNumber.trim()) {
-      setStudentLookup(null);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setLookupLoading(true);
-      try {
-        const data = await studentService.getStudentByAdmission(paymentForm.admissionNumber.trim());
-        setStudentLookup(data.data);
-      } catch {
-        setStudentLookup(null);
-      } finally {
-        setLookupLoading(false);
-      }
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [paymentForm.admissionNumber]);
+  }, [socket, queryClient]);
 
   const stats = {
     todayTotal: transactions
@@ -118,13 +95,17 @@ const Finance = () => {
   const getSourceStyle = (source) => SOURCE_ICONS[source] || { icon: 'payment', color: 'text-gray-600 bg-gray-50' };
 
   const handlePaymentFormChange = (e) => {
-    setPaymentForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setPaymentForm(prev => ({ ...prev, [name]: value }));
+    if (name === 'admissionNumber') {
+      if (admTimer) clearTimeout(admTimer);
+      setAdmTimer(setTimeout(() => setDebouncedAdm(value.trim()), 600));
+    }
   };
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     setPaymentError(null);
-    setPaymentLoading(true);
     try {
       const payload = {
         amount: parseFloat(paymentForm.amount),
@@ -133,10 +114,11 @@ const Finance = () => {
         paidBy: paymentForm.paidBy || paymentForm.admissionNumber.trim(),
       };
 
+      let result;
       if (paymentForm.source === 'CASH') {
-        await transactionService.recordCashPayment(payload);
+        result = await cashMutation.mutateAsync(payload);
       } else {
-        await transactionService.recordBankPayment({
+        result = await bankMutation.mutateAsync({
           ...payload,
           transactionId: paymentForm.receiptNumber || `MAN-${Date.now()}`,
           source: paymentForm.source,
@@ -144,19 +126,21 @@ const Finance = () => {
       }
       setShowPaymentModal(false);
       setPaymentForm(EMPTY_PAYMENT_FORM);
-      setStudentLookup(null);
-      fetchTransactions();
+      setDebouncedAdm('');
+
+      const txnId = result?.data?._id;
+      if (txnId) {
+        window.open(`/receipts/${txnId}?print=1`, '_blank', 'noopener');
+      }
     } catch (err) {
       setPaymentError(err.response?.data?.message || 'Failed to record payment. Please try again.');
-    } finally {
-      setPaymentLoading(false);
     }
   };
 
   const openPaymentModal = () => {
     setPaymentForm(EMPTY_PAYMENT_FORM);
     setPaymentError(null);
-    setStudentLookup(null);
+    setDebouncedAdm('');
     setShowPaymentModal(true);
   };
 
@@ -287,7 +271,7 @@ const Finance = () => {
               <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
                 <span className="material-symbols-outlined text-4xl text-red-400">error</span>
                 <p className="text-sm text-red-500 font-medium">{error}</p>
-                <button onClick={fetchTransactions} className="text-sm text-primary underline">Retry</button>
+                <button onClick={() => queryClient.invalidateQueries({ queryKey: ['transactions'] })} className="text-sm text-primary underline">Retry</button>
               </div>
             ) : filteredTransactions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
@@ -307,6 +291,7 @@ const Finance = () => {
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Date</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Allocations</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Receipt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-border">
@@ -362,6 +347,22 @@ const Finance = () => {
                             }`}>
                               {txn.status}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {txn.type === 'CREDIT' && txn.status !== 'REVERSED' ? (
+                              <a
+                                href={`/receipts/${txn._id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 transition-colors"
+                                title="View and print receipt"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">print</span>
+                                Print
+                              </a>
+                            ) : (
+                              <span className="text-xs text-text-muted/60">—</span>
+                            )}
                           </td>
                         </tr>
                       );

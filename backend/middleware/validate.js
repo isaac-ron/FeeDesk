@@ -65,18 +65,20 @@ const resetPasswordSchema = Joi.object({
 const createStudentSchema = Joi.object({
   admissionNumber: Joi.string().trim().uppercase().min(1).max(30).required(),
   name: Joi.string().trim().min(2).max(100).required(),
-  classLevel: Joi.string().trim().required(),
+  classId: objectId,                              // dynamic class reference (preferred)
+  classLevel: Joi.string().trim().allow('', null), // legacy string fallback
   stream: Joi.string().trim().allow('', null),
   guardianName: Joi.string().trim().min(2).max(100).required(),
   guardianPhone: kenyanPhone.required(),
   guardianEmail: Joi.string().email().allow('', null),
   school: objectId,
-});
+}).or('classId', 'classLevel'); // at least one class identifier required
 
 const updateStudentSchema = Joi.object({
   admissionNumber: Joi.string().trim().uppercase().min(1).max(30),
   name: Joi.string().trim().min(2).max(100),
-  classLevel: Joi.string().trim(),
+  classId: objectId,
+  classLevel: Joi.string().trim().allow('', null),
   stream: Joi.string().trim().allow('', null),
   guardianName: Joi.string().trim().min(2).max(100),
   guardianPhone: kenyanPhone,

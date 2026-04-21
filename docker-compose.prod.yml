@@ -1,0 +1,20 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Requires a production .env alongside this file with real secrets.
+
+services:
+  backend:
+    environment:
+      NODE_ENV: production
+      MPESA_IP_WHITELIST_ENABLED: "true"
+      MPESA_ENV: live
+      BANK_WEBHOOK_SIGNATURE_REQUIRED: "true"
+    volumes: []   # drop the bind-mount; use the baked-in image code
+    restart: always
+
+  mongodb:
+    restart: always
+
+  frontend:
+    restart: always

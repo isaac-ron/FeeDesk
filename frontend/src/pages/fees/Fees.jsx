@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback, useContext } from 'react';
+import { useState, useEffect, useMemo, useContext } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import { TermContext } from '../../context/TermContext';
-import api from '../../services/api';
+import {
+  useFeeStructures,
+  useCreateFeeStructure,
+  useUpdateFeeStructure,
+  usePublishFeeStructure,
+  useDeleteFeeStructure,
+} from '../../hooks/useFees';
 
 const CLASS_LEVELS = ['ALL', 'Grade 10', 'Grade 11', 'Grade 12'];
 
@@ -12,16 +18,12 @@ const Fees = () => {
   const { openSidebar } = useOutletContext() || {};
   const { terms, activeTerm } = useContext(TermContext);
 
-  const [structures, setStructures] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [filterTerm, setFilterTerm] = useState('');
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ term: '', classLevel: 'ALL', amount: '', label: 'Term fees' });
   const [formError, setFormError] = useState(null);
-  const [saving, setSaving] = useState(false);
 
   const realTerms = (terms || []).filter((t) => t._id !== 'fallback');
 
@@ -31,22 +33,21 @@ const Fees = () => {
     }
   }, [activeTerm, filterTerm]);
 
-  const fetchStructures = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const params = {};
-      if (filterTerm) params.term = filterTerm;
-      const { data } = await api.get('/fee-structures', { params });
-      setStructures(data.data || []);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load fee structures.');
-    } finally {
-      setLoading(false);
-    }
+  const queryParams = useMemo(() => {
+    const p = {};
+    if (filterTerm) p.term = filterTerm;
+    return p;
   }, [filterTerm]);
 
-  useEffect(() => { fetchStructures(); }, [fetchStructures]);
+  const { data: structureData, isLoading: loading, error: queryError } = useFeeStructures(queryParams);
+  const structures = structureData?.data || [];
+  const error = queryError?.response?.data?.message || (queryError ? 'Failed to load fee structures.' : null);
+
+  const createMutation = useCreateFeeStructure();
+  const updateMutation = useUpdateFeeStructure();
+  const publishMutation = usePublishFeeStructure();
+  const deleteMutation = useDeleteFeeStructure();
+  const saving = createMutation.isPending || updateMutation.isPending;
 
   const openCreate = () => {
     setEditing(null);
@@ -74,7 +75,6 @@ const Fees = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
     setFormError(null);
     try {
       if (!form.term) throw new Error('Select a term.');
@@ -89,24 +89,20 @@ const Fees = () => {
         label: form.label || 'Term fees',
       };
       if (editing) {
-        await api.put(`/fee-structures/${editing._id}`, payload);
+        await updateMutation.mutateAsync({ id: editing._id, data: payload });
       } else {
-        await api.post('/fee-structures', payload);
+        await createMutation.mutateAsync(payload);
       }
       setShowModal(false);
-      fetchStructures();
     } catch (err) {
       setFormError(err.response?.data?.message || err.message || 'Failed to save.');
-    } finally {
-      setSaving(false);
     }
   };
 
   const handlePublish = async (s) => {
     if (!window.confirm(`Publish ${s.classLevel} fees? Every active student in this class will be invoiced for ${formatKES(s.amount)}.`)) return;
     try {
-      await api.post(`/fee-structures/${s._id}/publish`);
-      fetchStructures();
+      await publishMutation.mutateAsync(s._id);
     } catch (err) {
       alert(err.response?.data?.message || 'Publish failed');
     }
@@ -115,8 +111,7 @@ const Fees = () => {
   const handleDelete = async (s) => {
     if (!window.confirm('Delete this DRAFT structure?')) return;
     try {
-      await api.delete(`/fee-structures/${s._id}`);
-      fetchStructures();
+      await deleteMutation.mutateAsync(s._id);
     } catch (err) {
       alert(err.response?.data?.message || 'Delete failed');
     }

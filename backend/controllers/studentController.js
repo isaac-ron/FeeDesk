@@ -1,4 +1,5 @@
 const Student = require('../models/Student');
+const { recordAudit } = require('../services/auditService');
 
 // Helper: returns school filter respecting super_admin bypass
 const schoolFilter = (req) => {
@@ -11,12 +12,13 @@ const schoolFilter = (req) => {
 // @access  Private
 const getStudents = async (req, res) => {
   try {
-    const { status, classLevel, search } = req.query;
+    const { status, classLevel, classId, search } = req.query;
 
     let query = { ...schoolFilter(req) };
 
     if (status) query.status = status;
-    if (classLevel) query.classLevel = classLevel;
+    if (classId) query.classId = classId;
+    else if (classLevel) query.classLevel = classLevel;
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -24,7 +26,9 @@ const getStudents = async (req, res) => {
       ];
     }
 
-    const students = await Student.find(query).sort({ createdAt: -1 });
+    const students = await Student.find(query)
+      .populate('classId', 'name level')
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -88,6 +92,15 @@ const createStudent = async (req, res) => {
       school: schoolId
     });
 
+    recordAudit({
+      school: schoolId,
+      user: req.user._id,
+      action: 'student.create',
+      entityType: 'STUDENT',
+      entityId: student._id,
+      description: `Enrolled student ${name} (${admissionNumber})`,
+    });
+
     res.status(201).json({ success: true, data: student });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -140,6 +153,16 @@ const deleteStudent = async (req, res) => {
     }
 
     await student.deleteOne();
+
+    recordAudit({
+      school: student.school,
+      user: req.user._id,
+      action: 'student.delete',
+      entityType: 'STUDENT',
+      entityId: student._id,
+      description: `Deleted student ${student.name} (${student.admissionNumber})`,
+    });
+
     res.status(200).json({ success: true, message: 'Student deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -281,6 +304,17 @@ const importStudents = async (req, res) => {
       } catch (err) {
         errors.push({ row: r + 1, admissionNumber: obj.admissionNumber, reason: err.message });
       }
+    }
+
+    if (created.length > 0) {
+      recordAudit({
+        school: schoolId,
+        user: req.user._id,
+        action: 'student.bulk_import',
+        entityType: 'STUDENT',
+        description: `Bulk imported ${created.length} student(s) from CSV (${errors.length} error(s))`,
+        metadata: { createdCount: created.length, errorCount: errors.length },
+      });
     }
 
     res.status(200).json({

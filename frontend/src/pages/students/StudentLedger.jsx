@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useContext } from 'react';
+import { useState, useMemo, useContext } from 'react';
 import { Link, useParams, useOutletContext } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import { TermContext } from '../../context/TermContext';
-import api from '../../services/api';
+import { useStudentLedger } from '../../hooks/useStudentLedger';
 
 const formatKES = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
 const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-KE') : '—';
@@ -20,30 +20,20 @@ const statusPill = (status) => {
 const StudentLedger = () => {
   const { studentId } = useParams();
   const { openSidebar } = useOutletContext() || {};
-  const { terms, activeTerm } = useContext(TermContext);
+  const { terms } = useContext(TermContext);
   const [termFilter, setTermFilter] = useState('');
-  const [ledger, setLedger] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   const realTerms = (terms || []).filter(t => t._id !== 'fallback');
 
-  const fetchLedger = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const params = {};
-      if (termFilter) params.term = termFilter;
-      const { data } = await api.get(`/students/${studentId}/ledger`, { params });
-      setLedger(data.data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load ledger.');
-    } finally {
-      setLoading(false);
-    }
-  }, [studentId, termFilter]);
+  const queryParams = useMemo(() => {
+    const p = {};
+    if (termFilter) p.term = termFilter;
+    return p;
+  }, [termFilter]);
 
-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  const { data: ledgerResponse, isLoading: loading, error: queryError } = useStudentLedger(studentId, queryParams);
+  const ledger = ledgerResponse?.data || null;
+  const error = queryError?.response?.data?.message || (queryError ? 'Failed to load ledger.' : null);
 
   const student = ledger?.student;
   const fees = ledger?.fees || [];

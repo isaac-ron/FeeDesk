@@ -32,6 +32,7 @@ const SCHOOL_NAV_GROUPS = [
     label: 'Settings',
     items: [
       { to: '/staff', icon: 'group', label: 'Staff' },
+      { to: '/audit-logs', icon: 'history', label: 'Audit log' },
       { to: '/settings', icon: 'settings', label: 'Settings' },
     ],
   },

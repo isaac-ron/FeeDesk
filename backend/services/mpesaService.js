@@ -4,8 +4,8 @@ const { getMpesaConfig } = require('./platformConfig');
 const SANDBOX_BASE = 'https://sandbox.safaricom.co.ke';
 const PRODUCTION_BASE = 'https://api.safaricom.co.ke';
 
-const getConfig = async () => {
-  const cfg = await getMpesaConfig();
+const getConfig = async (school) => {
+  const cfg = await getMpesaConfig(school);
   if (!cfg) return null;
   return {
     ...cfg,
@@ -17,21 +17,15 @@ const getConfig = async () => {
 // TOKEN MANAGEMENT
 // ============================================
 
-let cachedToken = null;
-let tokenExpiry = 0;
+// Cache keyed by consumerKey so multi-tenant credentials don't cross-contaminate.
+const tokenCache = new Map();
 
-/**
- * Generate or return cached OAuth access token from Daraja API.
- * Tokens are valid for ~3600 seconds; we refresh 60s early.
- */
-const getAccessToken = async () => {
+const getAccessToken = async (config) => {
   const now = Date.now();
-  if (cachedToken && now < tokenExpiry) {
-    return cachedToken;
+  const cached = tokenCache.get(config.consumerKey);
+  if (cached && now < cached.expiry) {
+    return cached.token;
   }
-
-  const config = await getConfig();
-  if (!config) throw new Error('M-PESA credentials not configured');
 
   const auth = Buffer.from(`${config.consumerKey}:${config.consumerSecret}`).toString('base64');
 
@@ -43,20 +37,19 @@ const getAccessToken = async () => {
     }
   );
 
-  cachedToken = response.data.access_token;
-  // Expire 60 seconds early to avoid mid-request token expiry
+  const token = response.data.access_token;
   const expiresIn = response.data.expires_in || 3600;
-  tokenExpiry = now + (expiresIn - 60) * 1000;
+  tokenCache.set(config.consumerKey, {
+    token,
+    expiry: now + (expiresIn - 60) * 1000,
+  });
 
   console.log('✅ [MPESA] OAuth token acquired');
-  return cachedToken;
+  return token;
 };
 
-/**
- * Build authorization header for Daraja API calls.
- */
-const authHeader = async () => {
-  const token = await getAccessToken();
+const authHeader = async (config) => {
+  const token = await getAccessToken(config);
   return { Authorization: `Bearer ${token}` };
 };
 
@@ -121,8 +114,8 @@ const normalisePhone = (phone) => {
  * @param {string} [params.callbackUrl] - Override default callback URL
  * @returns {Promise<object>} Daraja response with MerchantRequestID & CheckoutRequestID
  */
-const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackUrl }) => {
-  const config = await getConfig();
+const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackUrl, school }) => {
+  const config = await getConfig(school);
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const timestamp = generateTimestamp();
@@ -145,7 +138,7 @@ const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackU
 
   console.log(`📱 [MPESA] STK Push to ${phone} for KES ${amount} (ref: ${accountRef})`);
 
-  const headers = await authHeader();
+  const headers = await authHeader(config);
   const response = await axios.post(
     `${config.baseUrl}/mpesa/stkpush/v1/processrequest`,
     payload,
@@ -168,8 +161,8 @@ const stkPush = async ({ phoneNumber, amount, accountRef, description, callbackU
  * @param {string} checkoutRequestId - The CheckoutRequestID from stkPush response
  * @returns {Promise<object>} Status result with ResultCode and ResultDesc
  */
-const stkQuery = async (checkoutRequestId) => {
-  const config = await getConfig();
+const stkQuery = async (checkoutRequestId, school) => {
+  const config = await getConfig(school);
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const timestamp = generateTimestamp();
@@ -182,7 +175,7 @@ const stkQuery = async (checkoutRequestId) => {
     CheckoutRequestID: checkoutRequestId,
   };
 
-  const headers = await authHeader();
+  const headers = await authHeader(config);
   const response = await axios.post(
     `${config.baseUrl}/mpesa/stkpushquery/v1/query`,
     payload,
@@ -206,8 +199,8 @@ const stkQuery = async (checkoutRequestId) => {
  * @param {string} [params.responseType]  - "Completed" or "Cancelled" (default: Completed)
  * @returns {Promise<object>} Daraja response
  */
-const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 'Completed' }) => {
-  const config = await getConfig();
+const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 'Completed', school }) => {
+  const config = await getConfig(school);
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const payload = {
@@ -219,7 +212,7 @@ const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 
 
   console.log(`🔗 [MPESA] Registering C2B URLs:`, { validationUrl, confirmationUrl });
 
-  const headers = await authHeader();
+  const headers = await authHeader(config);
   const response = await axios.post(
     `${config.baseUrl}/mpesa/c2b/v1/registerurl`,
     payload,
@@ -249,8 +242,8 @@ const registerC2bUrls = async ({ validationUrl, confirmationUrl, responseType = 
  * @param {string} params.timeoutUrl      - Callback URL for timeout
  * @returns {Promise<object>} Daraja acknowledgement
  */
-const transactionStatus = async ({ transactionId, resultUrl, timeoutUrl }) => {
-  const config = await getConfig();
+const transactionStatus = async ({ transactionId, resultUrl, timeoutUrl, school }) => {
+  const config = await getConfig(school);
   if (!config) throw new Error('M-PESA credentials not configured');
 
   const payload = {
@@ -266,7 +259,7 @@ const transactionStatus = async ({ transactionId, resultUrl, timeoutUrl }) => {
     Occasion: '',
   };
 
-  const headers = await authHeader();
+  const headers = await authHeader(config);
   const response = await axios.post(
     `${config.baseUrl}/mpesa/transactionstatus/v1/query`,
     payload,

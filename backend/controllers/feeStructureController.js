@@ -2,7 +2,9 @@ const FeeStructure = require('../models/FeeStructure');
 const StudentFee = require('../models/StudentFee');
 const Student = require('../models/Student');
 const Term = require('../models/Term');
+const LedgerEntry = require('../models/LedgerEntry');
 const { recomputeManyStudentBalances } = require('../services/balanceService');
+const { recordAudit } = require('../services/auditService');
 
 const schoolFilter = (req) => {
   if (req.user.role === 'super_admin') return {};
@@ -169,6 +171,32 @@ const publishStructure = async (req, res) => {
       });
     }
 
+    // Create 'charge' ledger entries for every StudentFee row just created.
+    // These are the debit side of the ledger — negative amount means "owes".
+    const insertedFees = await StudentFee.find({
+      feeStructure: structure._id,
+      school: structure.school,
+    }).select('_id student term amountCharged');
+
+    const ledgerRows = insertedFees.map((sf) => ({
+      school: structure.school,
+      student: sf.student,
+      studentFee: sf._id,
+      term: sf.term,
+      type: 'charge',
+      amount: -sf.amountCharged, // negative = debit
+      balanceAfter: -sf.amountCharged, // first entry for this fee line
+      performedBy: req.user._id,
+      note: `Fee charged: ${label}`,
+    }));
+
+    if (ledgerRows.length) {
+      await LedgerEntry.insertMany(ledgerRows, { ordered: false }).catch((err) => {
+        // Log but don't fail the publish — the StudentFees are the critical path
+        console.error('[Publish] Ledger insert error:', err.message);
+      });
+    }
+
     structure.status = 'PUBLISHED';
     structure.publishedAt = new Date();
     structure.publishedBy = req.user._id;
@@ -176,6 +204,16 @@ const publishStructure = async (req, res) => {
     await structure.save();
 
     await recomputeManyStudentBalances(students.map((s) => s._id));
+
+    recordAudit({
+      school: structure.school,
+      user: req.user._id,
+      action: 'fee_structure.publish',
+      entityType: 'FEE_STRUCTURE',
+      entityId: structure._id,
+      description: `Published fee structure "${label}" for ${structure.classLevel} — ${students.length} student(s) invoiced`,
+      metadata: { amount: structure.amount, classLevel: structure.classLevel, studentsInvoiced: students.length },
+    });
 
     res.json({ success: true, data: structure, studentsInvoiced: students.length, rowsCreated: rows.length });
   } catch (error) {

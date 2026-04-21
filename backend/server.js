@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const http = require("http");
 const {Server} = require("socket.io");
 const helmet = require("helmet");
@@ -9,6 +10,8 @@ const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 const { apiLimiter, authLimiter } = require('./middleware/securityMiddleware');
 const { startFeeReminderJob } = require('./jobs/feeReminderJob');
+const { startPaymentWorker } = require('./workers/paymentWorker');
+const { startSmsWorker } = require('./workers/smsWorker');
 
 const app = express();
 const server = http.createServer(app);
@@ -32,8 +35,17 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   credentials: true
 }));
-app.use(express.json({ limit: '1mb' }));
+// Capture the raw request body so webhook handlers (KCB BUNI, Jenga) can
+// verify RSA/HMAC signatures against the exact bytes the bank sent us —
+// JSON.stringify after parsing loses whitespace/ordering and breaks verify.
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => {
+    if (buf && buf.length) req.rawBody = buf.toString('utf8');
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(cookieParser());
 
 // Rate limiting
 app.use('/api/', apiLimiter);
@@ -49,13 +61,14 @@ const io = new Server(server, {
 
 io.on('connection', (socket) => {
   console.log(`New client connected: ${socket.id}`);
-  
+
   socket.on('disconnect', () => {
     console.log('Client disconnected');
   });
 });
 
-// Make io accessible to routes
+// Make io accessible to routes via both app.set and middleware
+app.set('io', io);
 app.use((req, res, next) => {
   req.io = io;
   next();
@@ -86,6 +99,8 @@ const termRoutes = require('./routes/termRoutes');
 const feeStructureRoutes = require('./routes/feeStructureRoutes');
 const studentFeeRoutes = require('./routes/studentFeeRoutes');
 const smsRoutes = require('./routes/smsRoutes');
+const classRoutes = require('./routes/classRoutes');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
@@ -102,6 +117,8 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/platform/settings', platformSettingsRoutes);
+app.use('/api/classes', classRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 // Error Handling Middleware (must be last)
 app.use(notFound);
@@ -117,5 +134,17 @@ connectDB().then(() => {
 
     // Start scheduled jobs
     startFeeReminderJob();
+
+    // Start BullMQ workers (requires Redis).
+    // Workers are optional — if Redis is unavailable, the server still runs
+    // but webhook payments won't be processed until Redis is up.
+    try {
+      startPaymentWorker(io);
+      startSmsWorker();
+      console.log('BullMQ workers started');
+    } catch (err) {
+      console.error('BullMQ worker startup failed (Redis may be unavailable):', err.message);
+      console.error('Webhook payments will NOT be processed until Redis is connected.');
+    }
   });
 });

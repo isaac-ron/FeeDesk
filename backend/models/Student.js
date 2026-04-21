@@ -19,11 +19,19 @@ const studentSchema = new mongoose.Schema({
         required: [true, 'Name is required'],
         trim: true
     },
+    // Dynamic class reference — preferred. Links to the Class collection.
+    classId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Class',
+        default: null,
+        index: true
+    },
+    // Legacy string field — kept for backward compat with existing data.
+    // New students should use classId instead. The enum restriction is
+    // removed so any class name works during the transition.
     classLevel: {
         type: String,
-        required: [true, 'Class level is required'],
-        enum: ["Grade 10", "Grade 11", "Grade 12"]
-
+        default: null,
     },
     stream: {
         type: String,
@@ -72,5 +80,6 @@ studentSchema.index({ school: 1, admissionNumber: 1 }, { unique: true });
 // Index for efficient queries by school
 studentSchema.index({ school: 1, status: 1 });
 studentSchema.index({ school: 1, classLevel: 1 });
+studentSchema.index({ school: 1, classId: 1 });
 
 module.exports = mongoose.model('Student', studentSchema);

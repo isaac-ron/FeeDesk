@@ -18,10 +18,16 @@ const feeStructureSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  // Dynamic class reference — links to Class collection
+  classId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Class',
+    default: null,
+  },
+  // Legacy string field — kept for backward compat
   classLevel: {
     type: String,
-    required: true,
-    enum: ['Grade 10', 'Grade 11', 'Grade 12', 'ALL']
+    default: 'ALL',
   },
   label: {
     type: String,
@@ -44,9 +50,15 @@ const feeStructureSchema = new mongoose.Schema({
   studentsInvoiced: { type: Number, default: 0 }
 }, { timestamps: true });
 
+// Unique constraint: one structure per (school, term, class).
+// Uses classLevel for legacy data, classId for new data.
 feeStructureSchema.index(
   { school: 1, term: 1, classLevel: 1 },
-  { unique: true }
+  { unique: true, sparse: true }
+);
+feeStructureSchema.index(
+  { school: 1, term: 1, classId: 1 },
+  { unique: true, sparse: true }
 );
 
 module.exports = mongoose.model('FeeStructure', feeStructureSchema);
