@@ -98,6 +98,22 @@ studentFeeSchema.pre('save', function (next) {
   next();
 });
 
+// Safety net: keep Student.currentBalance consistent with the ledger even when
+// a caller forgets to invoke balanceService explicitly. Bulk paths
+// (insertMany / updateMany) bypass this — they already batch-recompute via
+// recomputeManyStudentBalances after the bulk write.
+// Lazy-require balanceService to avoid the StudentFee ↔ balanceService cycle.
+studentFeeSchema.post('save', async function (doc) {
+  try {
+    if (doc && doc.student) {
+      const { recomputeStudentBalance } = require('../services/balanceService');
+      await recomputeStudentBalance(doc.student);
+    }
+  } catch (err) {
+    console.error('[StudentFee post-save] balance recompute failed:', err.message);
+  }
+});
+
 studentFeeSchema.set('toJSON', { virtuals: true });
 studentFeeSchema.set('toObject', { virtuals: true });
 
