@@ -63,11 +63,11 @@ const sendSms = async (to, message) => {
     }, { timeout: 15000 });
 
     const result = response.data?.responses?.[0];
-    if (result?.['respose-code'] === 200) {
+    if (result?.['response-code'] === 200) {
       console.log(`✅ [SMS] Sent to ${phone} — messageId: ${result.messageid}`);
       return true;
     } else {
-      console.warn(`⚠️  [SMS] Delivery issue for ${phone}:`, result?.['response-description'], `code: ${result?.['respose-code']}`);
+      console.warn(`⚠️  [SMS] Delivery issue for ${phone}:`, result?.['response-description'], `code: ${result?.['response-code']}`);
       return false;
     }
   } catch (error) {
