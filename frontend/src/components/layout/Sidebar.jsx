@@ -16,6 +16,7 @@ const SCHOOL_NAV_GROUPS = [
     label: 'Finances',
     items: [
       { to: '/finance', icon: 'payments', label: 'Payments' },
+      { to: '/finance/suspense', icon: 'help', label: 'Suspense' },
       { to: '/fees', icon: 'receipt_long', label: 'Fee structures' },
       { to: '/terms', icon: 'event', label: 'Terms' },
       { to: '/reports', icon: 'analytics', label: 'Reports' },

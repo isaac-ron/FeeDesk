@@ -6,9 +6,40 @@ import api from '../../services/api';
 const TABS = [
   { id: 'school', label: 'School Profile', icon: 'apartment' },
   { id: 'mpesa', label: 'M-PESA', icon: 'phone_android' },
-  { id: 'sms', label: 'SMS', icon: 'sms' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
+
+const TABS_WITH_SAVE = new Set(['school', 'notifications']);
+
+const InputField = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-sm font-semibold text-slate-600">{label}</label>
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      disabled={disabled}
+      className="block w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all disabled:bg-slate-50 disabled:text-slate-500"
+    />
+  </div>
+);
+
+const Toggle = ({ label, description, checked, onChange }) => (
+  <div className="flex items-center justify-between py-3">
+    <div>
+      <p className="text-sm font-semibold text-slate-700">{label}</p>
+      {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
+    </div>
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-slate-300'}`}
+    >
+      <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
+  </div>
+);
 
 const Settings = () => {
   const { openSidebar } = useOutletContext() || {};
@@ -89,11 +120,6 @@ const Settings = () => {
           address: schoolForm.address,
           bankDetails: schoolForm.bankDetails,
         };
-      } else if (activeTab === 'mpesa') {
-        payload = {
-          paybillNumber: mpesaForm.paybillNumber,
-          accountNumber: mpesaForm.accountNumber,
-        };
       } else if (activeTab === 'notifications') {
         payload = {
           settings: {
@@ -102,9 +128,7 @@ const Settings = () => {
             emailNotifications: notifForm.emailNotifications,
           },
         };
-      } else if (activeTab === 'sms') {
-        // SMS credentials are server-side env vars, nothing to save from frontend
-        setSuccess('SMS credentials are configured on the server via environment variables.');
+      } else {
         setSaving(false);
         return;
       }
@@ -118,36 +142,6 @@ const Settings = () => {
       setSaving(false);
     }
   };
-
-  const InputField = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false }) => (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-slate-600">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="block w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all disabled:bg-slate-50 disabled:text-slate-500"
-      />
-    </div>
-  );
-
-  const Toggle = ({ label, description, checked, onChange }) => (
-    <div className="flex items-center justify-between py-3">
-      <div>
-        <p className="text-sm font-semibold text-slate-700">{label}</p>
-        {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-slate-300'}`}
-      >
-        <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
-      </button>
-    </div>
-  );
 
   const renderSchoolTab = () => (
     <div className="space-y-6">
@@ -186,69 +180,13 @@ const Settings = () => {
   const renderMpesaTab = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-bold text-slate-800 mb-1">M-PESA Integration</h3>
-        <p className="text-sm text-slate-500 mb-4">Configure your Safaricom M-PESA Paybill details for receiving payments.</p>
+        <h3 className="text-base font-bold text-slate-800 mb-1">M-PESA Payment Details</h3>
+        <p className="text-sm text-slate-500 mb-4">
+          These are the details your parents use when paying via M-PESA. They are set during onboarding — contact SchoolPay support if you need them changed.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <InputField label="Paybill Number" value={mpesaForm.paybillNumber} onChange={(e) => setMpesaForm({ ...mpesaForm, paybillNumber: e.target.value })} placeholder="e.g. 174379" />
-          <InputField label="Account Number (optional)" value={mpesaForm.accountNumber} onChange={(e) => setMpesaForm({ ...mpesaForm, accountNumber: e.target.value })} placeholder="Account reference" />
-        </div>
-      </div>
-
-      <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-        <div className="flex gap-3">
-          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">info</span>
-          <div>
-            <p className="text-sm font-semibold text-blue-800">Daraja API Credentials</p>
-            <p className="text-xs text-blue-700 mt-1">
-              Consumer Key, Consumer Secret, and Passkey are configured on the server via environment variables for security.
-              Contact your system administrator to update M-PESA API credentials.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSmsTab = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-base font-bold text-slate-800 mb-1">SMS Provider</h3>
-        <p className="text-sm text-slate-500 mb-4">SMS notifications are sent via TextSMS Kenya.</p>
-      </div>
-
-      <div className="rounded-lg bg-slate-50 border border-slate-200 p-5 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg bg-green-100 flex items-center justify-center">
-            <span className="material-symbols-outlined text-green-600">sms</span>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-800">TextSMS Kenya</p>
-            <p className="text-xs text-slate-500">REST API SMS Provider</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-500">API Key</span>
-            <span className="text-sm text-slate-700 font-mono">••••••••••</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-500">Partner ID</span>
-            <span className="text-sm text-slate-700 font-mono">••••••••••</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-500">Shortcode</span>
-            <span className="text-sm text-slate-700">SCHOOLPAY</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-        <div className="flex gap-3">
-          <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5">info</span>
-          <p className="text-xs text-blue-700">
-            SMS credentials are configured on the server via environment variables (TEXTSMS_API_KEY, TEXTSMS_PARTNER_ID, TEXTSMS_SHORTCODE).
-            Contact your system administrator to update these.
-          </p>
+          <InputField label="Paybill Number" value={mpesaForm.paybillNumber} disabled />
+          <InputField label="Account Reference" value={mpesaForm.accountNumber} disabled />
         </div>
       </div>
     </div>
@@ -280,7 +218,6 @@ const Settings = () => {
   const tabContent = {
     school: renderSchoolTab,
     mpesa: renderMpesaTab,
-    sms: renderSmsTab,
     notifications: renderNotificationsTab,
   };
 
@@ -348,26 +285,28 @@ const Settings = () => {
                 {tabContent[activeTab]?.()}
               </div>
 
-              {/* Save Button */}
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-white text-sm font-bold transition-all hover:bg-primary-hover hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-[18px]">save</span>
-                      Save Changes
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Save Button — hidden on read-only tabs */}
+              {TABS_WITH_SAVE.has(activeTab) && (
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-white text-sm font-bold transition-all hover:bg-primary-hover hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">save</span>
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

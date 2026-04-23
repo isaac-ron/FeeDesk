@@ -1087,16 +1087,42 @@ const matchPayment = async (req, res) => {
   }
 };
 
-// @desc    List unmatched (suspense) payments
+// @desc    List suspense payments — both unmatched (no student) AND
+//          matched-but-unallocated (student set but no fee-line allocations,
+//          typically because the payment arrived before the fee was published).
 // @route   GET /api/payments/unmatched
 // @access  Private
 const getUnmatchedPayments = async (req, res) => {
   try {
-    const filter = { status: 'PENDING', student: null };
-    if (req.user.role !== 'super_admin') filter.school = req.user.school;
+    const schoolScope = req.user.role === 'super_admin' ? {} : { school: req.user.school };
 
-    const payments = await Transaction.find(filter).sort({ createdAt: -1 });
-    res.json({ success: true, count: payments.length, data: payments });
+    const filter = {
+      ...schoolScope,
+      type: 'CREDIT',
+      status: { $ne: 'REVERSED' },
+      $or: [
+        { status: 'PENDING', student: null },
+        {
+          status: 'COMPLETED',
+          student: { $ne: null },
+          $or: [
+            { allocations: { $exists: false } },
+            { allocations: { $size: 0 } },
+          ],
+        },
+      ],
+    };
+
+    const payments = await Transaction.find(filter)
+      .populate('student', 'admissionNumber name classLevel')
+      .sort({ createdAt: -1 });
+
+    const data = payments.map((p) => ({
+      ...p.toObject(),
+      suspenseType: p.student ? 'UNALLOCATED' : 'UNMATCHED',
+    }));
+
+    res.json({ success: true, count: data.length, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1295,6 +1321,75 @@ const reallocatePayment = async (req, res) => {
   }
 };
 
+// @desc    Allocate a matched-but-unallocated payment to the student's current
+//          outstanding fees (oldest-due-first). Used when a payment arrived
+//          before any fee was published for the student.
+// @route   POST /api/payments/:id/allocate
+// @access  Private (admin, bursar)
+const allocateUnappliedPayment = async (req, res) => {
+  try {
+    const transaction = await Transaction.findById(req.params.id);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (req.user.role !== 'super_admin' && transaction.school?.toString() !== req.user.school?.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    if (!transaction.student) {
+      return res.status(400).json({ success: false, message: 'Payment is not matched to a student — use /match instead' });
+    }
+
+    if (Array.isArray(transaction.allocations) && transaction.allocations.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Payment is already allocated — use /reallocate to change allocations',
+      });
+    }
+
+    const { allocations } = await allocatePayment({
+      studentId: transaction.student,
+      amount: transaction.amount,
+      transaction,
+    });
+
+    if (!allocations.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No outstanding fees for this student — nothing to allocate against',
+      });
+    }
+
+    await createLedgerEntriesForAllocations({
+      allocations,
+      schoolId: transaction.school,
+      studentId: transaction.student,
+      transactionId: transaction._id,
+      sourceLabel: transaction.source,
+      ref: transaction.transactionId,
+    });
+
+    const populated = await Transaction.findById(transaction._id)
+      .populate('student', 'admissionNumber name classLevel')
+      .populate('allocations.studentFee', 'name type amountCharged amountPaid');
+
+    recordAudit({
+      school: transaction.school,
+      user: req.user._id,
+      action: 'payment.allocate',
+      entityType: 'PAYMENT',
+      entityId: transaction._id,
+      description: `Allocated payment ${transaction.transactionId} (KES ${transaction.amount}) across ${allocations.length} fee line(s)`,
+      metadata: { amount: transaction.amount, allocationCount: allocations.length },
+    });
+
+    res.json({ success: true, message: 'Payment allocated', data: populated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   mpesaValidation,
   mpesaConfirmation,
@@ -1313,4 +1408,5 @@ module.exports = {
   getUnmatchedPayments,
   refundPayment,
   reallocatePayment,
+  allocateUnappliedPayment,
 };

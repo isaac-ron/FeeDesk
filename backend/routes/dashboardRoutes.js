@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Transaction = require('../models/Transaction');
 const Student = require('../models/Student');
-const Fee = require('../models/Fee');
+const StudentFee = require('../models/StudentFee');
 const SmsLog = require('../models/SmsLog');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -56,26 +56,29 @@ router.get('/stats', protect, async (req, res) => {
       ? Math.round(((totalCollectedToday - totalCollectedYesterday) / totalCollectedYesterday) * 100)
       : 0;
 
-    // Get outstanding balance
-    const fees = await Fee.aggregate([
-      {
-        $match: {
-          school: req.user.school
-        }
-      },
+    // Outstanding balance — aggregate over StudentFee (the source of truth for
+    // published fees). Excludes WAIVED rows. Clamps per-row outstanding at 0 so
+    // overpayments on one row don't mask arrears on another.
+    const feeAgg = await StudentFee.aggregate([
+      { $match: { school: req.user.school, status: { $ne: 'WAIVED' } } },
       {
         $group: {
           _id: null,
-          totalExpected: { $sum: '$amount' },
-          totalPaid: { $sum: '$paidAmount' }
-        }
-      }
+          totalExpected: { $sum: '$amountCharged' },
+          totalPaid: { $sum: '$amountPaid' },
+          outstanding: {
+            $sum: {
+              $max: [0, { $subtract: ['$amountCharged', '$amountPaid'] }],
+            },
+          },
+        },
+      },
     ]);
 
-    const totalExpected = fees[0]?.totalExpected || 0;
-    const totalPaid = fees[0]?.totalPaid || 0;
-    const outstandingBalance = totalExpected - totalPaid;
-    const outstandingPercentage = totalExpected > 0 
+    const totalExpected = feeAgg[0]?.totalExpected || 0;
+    const totalPaid = feeAgg[0]?.totalPaid || 0;
+    const outstandingBalance = feeAgg[0]?.outstanding || 0;
+    const outstandingPercentage = totalExpected > 0
       ? Math.round((outstandingBalance / totalExpected) * 100)
       : 0;
 

@@ -21,6 +21,7 @@ import Dashboard from './pages/dashboard/Dashboard';
 import Students from './pages/students/Students';
 import StudentLedger from './pages/students/StudentLedger';
 import Finance from './pages/finance/Finance';
+import Suspense from './pages/finance/Suspense';
 import Fees from './pages/fees/Fees';
 import Terms from './pages/terms/Terms';
 import Reports from './pages/reports/Reports';
@@ -53,6 +54,7 @@ function App() {
                 <Route path="students" element={<BlockSuperAdmin><Students /></BlockSuperAdmin>} />
                 <Route path="students/:studentId/ledger" element={<BlockSuperAdmin><StudentLedger /></BlockSuperAdmin>} />
                 <Route path="finance" element={<BlockSuperAdmin><Finance /></BlockSuperAdmin>} />
+                <Route path="finance/suspense" element={<BlockSuperAdmin><Suspense /></BlockSuperAdmin>} />
                 <Route path="fees" element={<BlockSuperAdmin><Fees /></BlockSuperAdmin>} />
                 <Route path="terms" element={<BlockSuperAdmin><Terms /></BlockSuperAdmin>} />
                 <Route path="sms" element={<BlockSuperAdmin><SmsReminders /></BlockSuperAdmin>} />
