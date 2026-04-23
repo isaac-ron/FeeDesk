@@ -8,6 +8,19 @@
 
 const bankService = require('./bankService');
 
+// Kenyan phone normaliser — accepts "0712…", "712…", "+254712…", "254712…",
+// returns canonical "254XXXXXXXXX" (12 digits) or null if unparseable.
+// Transaction.phoneNumber validator requires /^254\d{9}$/.
+const normalizeKenyanPhone = (raw) => {
+  if (!raw) return null;
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return null;
+  if (/^254\d{9}$/.test(digits)) return digits;
+  if (/^0\d{9}$/.test(digits)) return `254${digits.slice(1)}`;
+  if (/^[17]\d{8}$/.test(digits)) return `254${digits}`;
+  return null;
+};
+
 /**
  * @param {'MPESA'|'KCB'|'EQUITY'|'COOP'} provider
  * @param {object} rawPayload  — the request body from the webhook
@@ -79,7 +92,7 @@ const normaliseBank = (provider, body, school) => {
     provider,
     ref: data.transactionId,
     amount: parseFloat(data.amount),
-    phone: data.phoneNumber || null,
+    phone: normalizeKenyanPhone(data.phoneNumber),
     accountRef: String(data.reference || '').trim().toUpperCase(),
     paidBy: data.paidBy || 'Bank Transfer',
     receivedAt: data.timestamp || new Date().toISOString(),
