@@ -680,6 +680,96 @@ const getPaymentStats = async (req, res) => {
   }
 };
 
+// @desc    KCB Bill-Validation — KCB asks "is this a valid bill for this reference?"
+// @route   POST /api/payments/bank/validate/kcb
+// @access  Public (KCB BUNI only)
+//
+// Spec: KCB posts { requestId, customerReference, organizationReference }.
+// We must respond synchronously with the 8-field validation payload
+// documented in the BUNI IPN spec.
+//
+// Enterprise rule (mirrors M-PESA validation): ALWAYS accept payment attempts.
+// If the admission number doesn't match a student, we still return success
+// with billAmount=0 + billType=PARTIAL so the payment lands in suspense
+// rather than being rejected at the till.
+const kcbBillValidation = async (req, res) => {
+  console.log('\n========== KCB BILL VALIDATION ==========');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+
+  const kcb = bankService.getBankProvider('KCB');
+
+  try {
+    const { requestId, customerReference, organizationReference } = req.body || {};
+
+    if (!requestId || !customerReference || !organizationReference) {
+      return res.status(400).json(
+        kcb.billValidationResponse(req.body, { success: false, message: 'Missing required fields' })
+      );
+    }
+
+    // 1. Resolve school by organization short code (configured per-tenant)
+    const school = await School.findOne({
+      'bankIntegration.provider': 'KCB',
+      'bankIntegration.enabled': true,
+      $or: [
+        { 'bankIntegration.credentials.organizationCode': String(organizationReference) },
+        { 'bankIntegration.credentials.accountNumber': String(organizationReference) },
+      ],
+    });
+
+    if (!school) {
+      console.warn(`[KCB VALIDATE] No KCB-enabled school matches organizationReference ${organizationReference}`);
+      return res.json(
+        kcb.billValidationResponse(req.body, { success: false, message: 'Organization not found' })
+      );
+    }
+
+    // 2. Verify signature using this school's configured public key.
+    //    Done after school lookup because the key is per-tenant.
+    const signature = req.headers['signature'] || req.headers['x-kcb-signature'];
+    const bodyForSig = req.rawBody || req.body;
+    const sigValid = bankService.validateWebhook('KCB', bodyForSig, signature, school);
+    if (!sigValid && process.env.BANK_WEBHOOK_SIGNATURE_REQUIRED === 'true') {
+      console.warn('[KCB VALIDATE] Signature rejected');
+      return res.status(403).json(
+        kcb.billValidationResponse(req.body, { success: false, message: 'Invalid signature' })
+      );
+    }
+
+    // 3. Look up student by admission number (customerReference)
+    const admission = String(customerReference).trim().toUpperCase();
+    const student = await Student.findOne({ school: school._id, admissionNumber: admission });
+
+    if (!student) {
+      // Accept the payment anyway — parent may be using a wrong admission
+      // number but we want the money to land (it'll go to suspense and a
+      // bursar can match it later). Respond 0-amount PARTIAL.
+      console.warn(`[KCB VALIDATE] ${admission} not found in ${school.name} — accepting as suspense`);
+      return res.json(
+        kcb.billValidationResponse(req.body, {
+          success: true,
+          message: 'Success',
+          student: null,
+          school,
+        })
+      );
+    }
+
+    console.log(`[KCB VALIDATE] ✅ ${student.name} (${student.admissionNumber}) balance KES ${student.currentBalance}`);
+    return res.json(
+      kcb.billValidationResponse(req.body, { success: true, message: 'Success', student, school })
+    );
+  } catch (error) {
+    console.error('[KCB VALIDATE] Error:', error.message);
+    // Still return 200 with a success body — rejecting at the till is worse
+    // than landing a suspense payment we can reconcile.
+    return res.json(
+      kcb.billValidationResponse(req.body, { success: true, message: 'Success' })
+    );
+  }
+};
+
 // @desc    Handle Bank Payment Webhook (Equity, KCB, Co-op)
 // @route   POST /api/payments/bank/webhook/:provider
 // @access  Public (Bank APIs Only)
@@ -1215,6 +1305,7 @@ module.exports = {
   recordBankPayment,
   recordCashPayment,
   getPaymentStats,
+  kcbBillValidation,
   bankWebhookHandler,
   registerBankWebhook,
   reconcileBankTransactions,

@@ -10,6 +10,7 @@ const {
   recordBankPayment,
   recordCashPayment,
   getPaymentStats,
+  kcbBillValidation,
   bankWebhookHandler,
   registerBankWebhook,
   reconcileBankTransactions,
@@ -36,6 +37,9 @@ router.post('/stkcallback', callbackLimiter, safaricomOnly, stkCallback);
 // ============================================
 // BANK WEBHOOKS (Public - Bank APIs only)
 // ============================================
+// KCB Bill-Validation (sync bill lookup) — KCB hits this BEFORE debiting.
+router.post('/bank/validate/kcb', callbackLimiter, kcbBillValidation);
+// Bill-Notification / IPN — KCB hits this AFTER the credit posts.
 router.post('/bank/webhook/:provider', callbackLimiter, bankWebhookHandler);
 
 // ============================================

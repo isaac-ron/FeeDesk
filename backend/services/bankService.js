@@ -35,7 +35,7 @@ class BankService {
     }
   }
 
-  async processWebhook(provider, payload, school) {
+  processWebhook(provider, payload, school) {
     return this.getBankProvider(provider).processWebhook(payload, school);
   }
 
@@ -160,7 +160,7 @@ class EquityBankService {
     return crypto.createSign('SHA256').update(payload).sign(privateKey, 'base64');
   }
 
-  async processWebhook(payload, school) {
+  processWebhook(payload, school) {
     console.log('[EQUITY] IPN payload:', payload);
     const {
       transactionRef,
@@ -314,6 +314,9 @@ class EquityBankService {
 class KCBBankService {
   constructor() {
     this.baseUrl = process.env.KCB_API_URL || 'https://uat.buni.kcbgroup.com';
+    // BUNI prod hosts the OAuth issuer on a separate hostname
+    // (accounts.buni.kcbgroup.com) from the API gateway. Allow full override.
+    this.tokenUrl = process.env.KCB_TOKEN_URL || `${this.baseUrl}/token`;
   }
 
   _creds(school) {
@@ -324,6 +327,9 @@ class KCBBankService {
       // KCB's PEM public key used to verify IPN signatures
       kcbPublicKey: c.kcbPublicKey || process.env.KCB_PUBLIC_KEY,
       accountNumber: c.accountNumber,
+      // BUNI gateway "organizationShortCode" — the paybill-like value KCB
+      // echoes back on both Validation and IPN payloads.
+      organizationCode: c.organizationCode,
     };
   }
 
@@ -340,7 +346,7 @@ class KCBBankService {
     try {
       const basic = Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString('base64');
       const response = await axios.post(
-        `${this.baseUrl}/token`,
+        this.tokenUrl,
         'grant_type=client_credentials',
         {
           headers: {
@@ -362,7 +368,7 @@ class KCBBankService {
     }
   }
 
-  async processWebhook(payload, school) {
+  processWebhook(payload, school) {
     console.log('[KCB] IPN payload:', payload);
     const {
       transactionReference,
@@ -442,13 +448,52 @@ class KCBBankService {
   }
 
   /**
-   * KCB's required acknowledgement shape — must be returned verbatim.
+   * IPN (Bill-Notification) ack — KCB spec requires exactly these three
+   * fields. The sample response in the spec uses "Notification received"
+   * for success; we mirror that wording so BUNI log-grepping matches.
    */
   ackResponse(payload, { success = true, message } = {}) {
     return {
       transactionID: payload?.requestId || payload?.transactionReference || '',
       statusCode: success ? '0' : '1',
-      statusMessage: message || (success ? 'Notification received successfully' : 'Rejected'),
+      statusMessage: message || (success ? 'Notification received' : 'Rejected'),
+    };
+  }
+
+  /**
+   * Bill-Validation response — KCB POSTs
+   *   { requestId, customerReference, organizationReference }
+   * and expects this shape back (all fields mandatory per spec):
+   *   { transactionID, statusCode, statusMessage, CustomerName,
+   *     billAmount, currency, billType, creditAccountIdentifier }
+   *
+   * billType:
+   *   FIXED   — parent must pay exactly billAmount (we currently do not
+   *             pin the amount; schools collect whatever a parent chooses)
+   *   PARTIAL — parent may pay any amount up to/over billAmount
+   */
+  billValidationResponse(payload, { success = true, message, student, school } = {}) {
+    const base = {
+      transactionID: payload?.requestId || '',
+      statusCode: success ? '0' : '1',
+      statusMessage: message || (success ? 'Success' : 'Rejected'),
+      CustomerName: '',
+      billAmount: '0.00',
+      currency: 'KES',
+      billType: 'PARTIAL',
+      creditAccountIdentifier: '',
+    };
+
+    if (!success) return base;
+
+    const outstanding = Math.max(0, Number(student?.currentBalance || 0));
+    return {
+      ...base,
+      CustomerName: student?.name || 'School Fee Payer',
+      billAmount: outstanding.toFixed(2),
+      billType: 'PARTIAL',
+      creditAccountIdentifier:
+        school?.bankIntegration?.credentials?.accountNumber || payload?.organizationReference || '',
     };
   }
 
@@ -511,7 +556,7 @@ class CoopBankService {
     throw new Error('Co-op Bank integration not yet implemented — use aggregator path (Tuma/IntaSend) or complete COOP Connect onboarding first');
   }
 
-  async processWebhook(payload) {
+  processWebhook(payload) {
     return {
       transactionId: payload.MessageReference || payload.TransactionID,
       amount: parseFloat(payload.Amount || payload.TransAmount || 0),
