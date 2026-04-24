@@ -1,0 +1,35 @@
+/* FeeDesk Brand Colours */
+
+:root {
+  /* ── Primary Palette ── */
+  --fd-blue-900:   #071E42;   /* Deep navy — text on light */
+  --fd-blue-800:   #0C2D5F;
+  --fd-blue-700:   #103A7A;
+  --fd-blue-600:   #1251A3;   /* Brand primary — logo, CTAs */
+  --fd-blue-500:   #1A65C9;
+  --fd-blue-400:   #2F7DE0;
+  --fd-blue-300:   #5CB8FF;   /* Accent — graph node, highlights */
+  --fd-blue-200:   #93D0FF;
+  --fd-blue-100:   #C7E8FF;
+  --fd-blue-50:    #E8F3FF;   /* Tint backgrounds */
+
+  /* ── Neutral Palette ── */
+  --fd-gray-950:   #0C1018;   /* Dark mode background */
+  --fd-gray-900:   #1A1F2B;
+  --fd-gray-800:   #2C3444;
+  --fd-gray-600:   #4B5563;
+  --fd-gray-400:   #9CA3AF;
+  --fd-gray-300:   #D1D5DB;
+  --fd-gray-100:   #F3F4F6;
+  --fd-gray-50:    #F9FAFB;
+
+  /* ── Semantic ── */
+  --fd-success:    #16A34A;
+  --fd-warning:    #D97706;
+  --fd-danger:     #DC2626;
+  --fd-info:       --fd-blue-600;
+
+  /* ── Typography ── */
+  --fd-font-display: 'Manrope', sans-serif;
+  --fd-font-mono:    'Space Mono', monospace;
+}

@@ -76,7 +76,7 @@ const Sidebar = ({ open, onClose }) => {
 
   // School name surfaces from the user's populated school field; the auth
   // endpoint already returns it. Falls back gracefully if unavailable.
-  const schoolName = user?.school?.name || user?.schoolName || 'SchoolPay';
+  const schoolName = user?.school?.name || user?.schoolName || null;
 
   return (
     <>
@@ -100,14 +100,18 @@ const Sidebar = ({ open, onClose }) => {
         <div className="p-6 flex-1 overflow-y-auto">
           {/* Brand */}
           <div className="flex items-center gap-3 mb-6">
-            <div className="size-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="material-symbols-outlined text-white text-[22px]">account_balance</span>
-            </div>
+            <img
+              src="/feedesk-brand/feedesk-brand/logos/svg/feedesk-icon-only.svg"
+              alt="FeeDesk"
+              className="size-10 flex-shrink-0"
+            />
             <div className="flex flex-col min-w-0">
-              <h1 className="text-primary text-lg font-extrabold leading-tight tracking-tight font-display truncate">
-                {schoolName}
+              <h1 className="text-lg font-semibold leading-tight tracking-tight font-display truncate text-text-main">
+                Fee<span className="text-primary">Desk</span>
               </h1>
-              <p className="text-text-muted text-xs font-medium">{consoleLabel}</p>
+              <p className="text-text-muted text-xs font-medium truncate">
+                {schoolName || consoleLabel}
+              </p>
             </div>
           </div>
 

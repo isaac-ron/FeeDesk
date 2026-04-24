@@ -104,7 +104,7 @@ const PlatformSettings = () => {
 
             <Section title="SMS Gateway" subtitle="TextSMS Kenya credentials used for fee reminders and payment receipts">
               <TextInput label="Provider" name="provider" value={sms.provider} onChange={e => setSms({ ...sms, provider: e.target.value })} />
-              <TextInput label="Sender shortcode" name="shortcode" value={sms.shortcode} onChange={e => setSms({ ...sms, shortcode: e.target.value })} placeholder="SCHOOLPAY" />
+              <TextInput label="Sender shortcode" name="shortcode" value={sms.shortcode} onChange={e => setSms({ ...sms, shortcode: e.target.value })} placeholder="FEEDESK" />
               <TextInput label="Partner ID" name="partnerId" value={sms.partnerId} onChange={e => setSms({ ...sms, partnerId: e.target.value })} />
               <SecretInput label="API key" name="apiKey" value={sms.apiKey} isSet={settings.smsGateway.apiKeySet} onChange={e => setSms({ ...sms, apiKey: e.target.value })} placeholder={settings.smsGateway.apiKey} />
             </Section>

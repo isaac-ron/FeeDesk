@@ -12,7 +12,7 @@ const Header = () => {
       justifyContent: 'space-between',
       alignItems: 'center'
     }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 600 }}>SchoolPay Enterprise</h1>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 600 }}>FeeDesk</h1>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <span>Welcome, {user?.name}</span>
         <button onClick={logout} className="btn btn-primary">

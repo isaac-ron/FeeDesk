@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
+
+
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,13 +39,29 @@ const Login = () => {
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/80 to-slate-900/40"></div>
           </div>
           
+          {/*Brand Logo*/}
+          <div className="relative z-10 flex items-center gap-3 mb-6">
+            <img
+              src="/feedesk-brand/feedesk-brand/logos/svg/feedesk-icon-only.svg"
+              alt="FeeDesk"
+              width="50"
+              height="50"
+            />
+            <div>
+              <div style={{fontSize: '28px', fontWeight: 600, letterSpacing: '-1px', color: '#0C1018'}}>Fee<span style={{color: '#1251A3'}}>Desk</span></div>
+              <div style={{fontSize: '9px', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#9CA3AF'}}>Every Payment. Accounted For.</div>
+            </div>
+           </div>
+          {/*
+
           <div className="relative z-10 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white">
+              <img src={primaryLogo} alt="EduFinance Kenya" className="h-6 w-6" />
               <span className="material-symbols-outlined text-2xl font-bold">school</span>
             </div>
             <span className="font-header text-xl font-bold tracking-tight text-white">EduFinance Kenya</span>
           </div>
-          
+          */}
           <div className="relative z-10 mt-auto max-w-lg">
             <div className="glass-panel rounded-xl p-8 shadow-2xl" style={{
               background: 'rgba(15, 23, 42, 0.75)',
@@ -89,10 +107,15 @@ const Login = () => {
             {/* Mobile Logo */}
             <div className="flex justify-center lg:hidden mb-4">
               <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white">
-                  <span className="material-symbols-outlined text-2xl font-bold">school</span>
-                </div>
-                <span className="font-header text-xl font-bold tracking-tight text-slate-900 dark:text-white">EduFinance Kenya</span>
+                <img
+                  src="/feedesk-brand/feedesk-brand/logos/svg/feedesk-icon-only.svg"
+                  alt="FeeDesk"
+                  width="40"
+                  height="40"
+                />
+                <span className="font-header text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                  Fee<span className="text-primary">Desk</span>
+                </span>
               </div>
             </div>
 

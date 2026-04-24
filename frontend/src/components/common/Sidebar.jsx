@@ -16,7 +16,7 @@ const Sidebar = () => {
       padding: '2rem 1rem'
     }}>
       <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>SchoolPay</h2>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>FeeDesk</h2>
       </div>
       <nav>
         {navItems.map((item) => (

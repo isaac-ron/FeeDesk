@@ -77,8 +77,8 @@ const Dashboard = () => {
   return (
     <>
       <PageHeader
-        title="Overview"
-        subtitle={schoolName || undefined}
+        title={schoolName ? `${schoolName} Dashboard` : 'Dashboard'}
+        subtitle="Overview of recent activity and key metrics"
         onMenuClick={openSidebar}
         actions={
           <>

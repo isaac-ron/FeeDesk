@@ -182,7 +182,7 @@ const Settings = () => {
       <div>
         <h3 className="text-base font-bold text-slate-800 mb-1">M-PESA Payment Details</h3>
         <p className="text-sm text-slate-500 mb-4">
-          These are the details your parents use when paying via M-PESA. They are set during onboarding — contact SchoolPay support if you need them changed.
+          These are the details your parents use when paying via M-PESA. They are set during onboarding — contact FeeDesk support if you need them changed.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputField label="Paybill Number" value={mpesaForm.paybillNumber} disabled />

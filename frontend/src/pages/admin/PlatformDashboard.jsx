@@ -34,7 +34,7 @@ const PlatformDashboard = () => {
     <>
       <PageHeader
         title="Platform Overview"
-        subtitle="Monitor all schools on SchoolPay"
+        subtitle="Monitor all schools on FeeDesk"
         onMenuClick={openSidebar}
       />
       <main className="flex-1 overflow-y-auto p-8">
