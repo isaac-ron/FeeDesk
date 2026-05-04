@@ -3,6 +3,108 @@
   min-height: 100vh;
 }
 
+/* ==================================================================
+   Landing page animations
+   Pair with useReveal hook in src/pages/landing/hooks/useReveal.js
+   ================================================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-fade {
+  opacity: 0;
+  transition: opacity 800ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-fade.reveal-visible {
+  opacity: 1;
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-scale.reveal-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Subtle floating orb for hero decorative blobs */
+@keyframes fd-float {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50%      { transform: translateY(-18px) translateX(8px); }
+}
+.fd-float-slow { animation: fd-float 9s ease-in-out infinite; }
+.fd-float-slower { animation: fd-float 13s ease-in-out infinite reverse; }
+
+/* Marquee for trust-badge row */
+@keyframes fd-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.fd-marquee-track {
+  animation: fd-marquee 28s linear infinite;
+}
+.fd-marquee-pause:hover .fd-marquee-track {
+  animation-play-state: paused;
+}
+
+/* Counting-tick for live txn rows */
+@keyframes fd-tick-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fd-tick-in { animation: fd-tick-in 600ms ease-out both; }
+
+/* Soft bounce arrow for the scroll-down hint */
+@keyframes fd-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(6px); }
+}
+.fd-bounce { animation: fd-bounce 1.8s ease-in-out infinite; }
+
+/* Shimmer for the floating notification card */
+@keyframes fd-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  100% { box-shadow: 0 0 0 12px rgba(22, 163, 74, 0); }
+}
+.fd-pulse-ring { animation: fd-pulse-ring 1.8s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-fade,
+  .reveal-scale {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .fd-float-slow,
+  .fd-float-slower,
+  .fd-marquee-track,
+  .fd-tick-in,
+  .fd-bounce,
+  .fd-pulse-ring {
+    animation: none !important;
+  }
+  html { scroll-behavior: auto; }
+}
+
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;

@@ -87,10 +87,17 @@ const setCachedToken = (key, token, expiresInSec) => {
  *   signed with the merchant's RSA private key, Base64 encoded, sent as
  *   the `signature` header.
  *
- * IPN (receiving credit notifications): Jenga POSTs to our registered
- * callback URL with a payload like:
- *   { transactionRef, amount, currency, accountNumber, senderName, phoneNumber, transactionDate }
- * and a `signature` header the merchant can verify using Jenga's public key.
+ * IPN (receiving credit notifications): per JengaHQ docs, Jenga POSTs JSON
+ * to our registered callback URL with HTTP Basic Auth (username/password
+ * configured per-IPN in the JengaHQ portal). The body shape is:
+ *   { callbackType: "IPN",
+ *     customer:    { name, mobileNumber, reference },
+ *     transaction: { date, reference, paymentMode, amount, currency,
+ *                    billNumber, status: "SUCCESS"|"FAILED", ... },
+ *     bank:        { reference, transactionType, account } }
+ * `transaction.billNumber` is the school account identifier we resolve
+ * against. NOTE: Jenga IPN does NOT send an RSA signature header — auth
+ * is Basic Auth only. (Don't conflate with KCB BUNI's signed model.)
  */
 class EquityBankService {
   constructor() {
@@ -109,6 +116,9 @@ class EquityBankService {
       privateKey: c.privateKey || process.env.JENGA_PRIVATE_KEY,
       publicKey: c.publicKey || process.env.JENGA_PUBLIC_KEY,
       accountNumber: c.accountNumber,
+      // IPN Basic Auth (configured per-IPN in JengaHQ portal)
+      webhookUsername: c.webhookUsername || process.env.JENGA_WEBHOOK_USERNAME,
+      webhookPassword: c.webhookPassword || process.env.JENGA_WEBHOOK_PASSWORD,
     };
   }
 
@@ -162,48 +172,57 @@ class EquityBankService {
 
   processWebhook(payload, school) {
     console.log('[EQUITY] IPN payload:', payload);
-    const {
-      transactionRef,
-      transactionReference, // Jenga occasionally uses either
-      amount,
-      currency,
-      accountNumber,
-      senderName,
-      phoneNumber,
-      senderMobile,
-      transactionDate,
-      timestamp,
-    } = payload;
+    const customer = payload?.customer || {};
+    const transaction = payload?.transaction || {};
+    const bank = payload?.bank || {};
 
     return {
-      transactionId: transactionRef || transactionReference,
-      amount: parseFloat(amount),
-      currency: currency || 'KES',
-      reference: accountNumber,
-      paidBy: senderName,
-      phoneNumber: phoneNumber || senderMobile,
-      timestamp: new Date(transactionDate || timestamp || Date.now()),
+      transactionId: transaction.reference || bank.reference,
+      amount: parseFloat(transaction.amount),
+      currency: transaction.currency || 'KES',
+      reference: transaction.billNumber,
+      paidBy: customer.name,
+      phoneNumber: customer.mobileNumber,
+      timestamp: new Date(transaction.date || Date.now()),
       source: 'BANK_TRANSFER',
       provider: 'EQUITY',
+      status: transaction.status,
+      paymentMode: transaction.paymentMode,
+      remarks: transaction.remarks,
       rawPayload: payload,
     };
   }
 
   /**
-   * Verify Jenga IPN signature header using the merchant's stored Jenga
-   * public key (RSA-SHA256 over the raw JSON body). If no public key is
-   * configured we return false so the caller short-circuits with an error
-   * rather than silently accepting unsigned traffic.
+   * Jenga IPN authenticates via HTTP Basic Auth (username/password set
+   * per-IPN in the JengaHQ portal). The caller passes the raw value of
+   * the `Authorization` header. We compare against the school's stored
+   * webhookUsername / webhookPassword using a constant-time check.
    */
-  validateWebhook(payload, signature, school) {
+  validateWebhook(payload, authHeader, school) {
     const creds = this._creds(school);
-    if (!creds.publicKey || !signature) return false;
+    if (!creds.webhookUsername || !creds.webhookPassword) {
+      console.warn('[EQUITY] No webhookUsername/webhookPassword configured — cannot validate IPN Basic Auth');
+      return false;
+    }
+    if (!authHeader || typeof authHeader !== 'string' || !authHeader.toLowerCase().startsWith('basic ')) {
+      return false;
+    }
     try {
-      const verifier = crypto.createVerify('SHA256');
-      verifier.update(JSON.stringify(payload));
-      return verifier.verify(creds.publicKey, signature, 'base64');
+      const decoded = Buffer.from(authHeader.slice(6).trim(), 'base64').toString('utf8');
+      const idx = decoded.indexOf(':');
+      if (idx === -1) return false;
+      const user = decoded.slice(0, idx);
+      const pass = decoded.slice(idx + 1);
+      const expectedUser = Buffer.from(creds.webhookUsername);
+      const expectedPass = Buffer.from(creds.webhookPassword);
+      const gotUser = Buffer.from(user);
+      const gotPass = Buffer.from(pass);
+      if (gotUser.length !== expectedUser.length || gotPass.length !== expectedPass.length) return false;
+      return crypto.timingSafeEqual(gotUser, expectedUser)
+          && crypto.timingSafeEqual(gotPass, expectedPass);
     } catch (err) {
-      console.error('[EQUITY] Signature verify failed:', err.message);
+      console.error('[EQUITY] Basic Auth decode failed:', err.message);
       return false;
     }
   }

@@ -97,6 +97,8 @@ const normaliseBank = (provider, body, school) => {
     paidBy: data.paidBy || 'Bank Transfer',
     receivedAt: data.timestamp || new Date().toISOString(),
     sourceLabel: `${provider} BANK`,
+    status: data.status,
+    paymentMode: data.paymentMode,
     rawPayload: body,
   };
 };

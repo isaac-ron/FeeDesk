@@ -800,10 +800,11 @@ const bankWebhookHandler = async (req, res) => {
       return res.status(400).json({ ResultCode: 1, ResultDesc: 'Invalid bank provider' });
     }
 
-    // 2. Identify school (lightweight read — needed for signature validation)
+    // 2. Identify school (lightweight read — needed for auth validation)
     let accountIdentifier;
     if (provider === 'EQUITY') {
-      accountIdentifier = req.body.accountNumber || req.body.merchantAccount;
+      // Jenga IPN nests the school account under transaction.billNumber.
+      accountIdentifier = req.body?.transaction?.billNumber;
     } else if (provider === 'KCB') {
       accountIdentifier = req.body.creditAccountIdentifier || req.body.accountNumber;
     } else if (provider === 'COOP') {
@@ -825,24 +826,36 @@ const bankWebhookHandler = async (req, res) => {
       return res.status(404).json(ack(false, 'School not configured for this bank account'));
     }
 
-    // 3. Validate webhook signature
-    const signature =
-      req.headers['x-buni-signature'] ||
-      req.headers['x-kcb-signature'] ||
-      req.headers['signature'] ||
-      req.headers['x-jenga-signature'] ||
-      req.headers['x-signature'] ||
-      req.headers['authorization'];
+    // 3. Validate webhook auth.
+    //    EQUITY (Jenga): HTTP Basic Auth — pass the raw `Authorization` header.
+    //    KCB:            SHA256withRSA over body — pass the signature header.
+    let authMaterial;
+    if (provider === 'EQUITY') {
+      authMaterial = req.headers['authorization'];
+    } else {
+      authMaterial =
+        req.headers['x-buni-signature'] ||
+        req.headers['x-kcb-signature'] ||
+        req.headers['signature'] ||
+        req.headers['x-signature'];
+    }
     const bodyForSig = req.rawBody || req.body;
-    const isValid = bankService.validateWebhook(provider, bodyForSig, signature, school);
+    const isValid = bankService.validateWebhook(provider, bodyForSig, authMaterial, school);
     const enforceSig = process.env.BANK_WEBHOOK_SIGNATURE_REQUIRED === 'true';
 
     if (!isValid && enforceSig) {
-      return res.status(403).json(ack(false, 'Invalid signature'));
+      return res.status(403).json(ack(false, provider === 'EQUITY' ? 'Invalid Basic Auth' : 'Invalid signature'));
     }
 
     // 4. Normalise payload into internal shape
     const normalised = normalise(provider, req.body, school);
+
+    // 4a. Drop FAILED Jenga IPNs — JengaHQ delivers both SUCCESS and FAILED
+    //     by default; we never want to allocate a failed payment.
+    if (provider === 'EQUITY' && normalised.status && normalised.status !== 'SUCCESS') {
+      console.log(`[EQUITY] Skipping ${normalised.status} IPN ref=${normalised.ref}`);
+      return res.json(ack(true, 'Notification received (non-success status ignored)'));
+    }
 
     // 5. Enqueue for async processing — respond immediately
     const queue = getPaymentQueue();

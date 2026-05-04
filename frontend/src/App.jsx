@@ -14,6 +14,7 @@ const queryClient = new QueryClient({
   },
 });
 import Layout from './components/layout/Layout';
+import LandingPage from './pages/landing/LandingPage';
 import Login from './pages/auth/Login';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
@@ -45,29 +46,30 @@ function App() {
         <SocketProvider>
           <Router>
             <Routes>
+              <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<Login />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password/:token" element={<ResetPassword />} />
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<BlockSuperAdmin><Dashboard /></BlockSuperAdmin>} />
-                <Route path="students" element={<BlockSuperAdmin><Students /></BlockSuperAdmin>} />
-                <Route path="students/:studentId/ledger" element={<BlockSuperAdmin><StudentLedger /></BlockSuperAdmin>} />
-                <Route path="finance" element={<BlockSuperAdmin><Finance /></BlockSuperAdmin>} />
-                <Route path="finance/suspense" element={<BlockSuperAdmin><Suspense /></BlockSuperAdmin>} />
-                <Route path="fees" element={<BlockSuperAdmin><Fees /></BlockSuperAdmin>} />
-                <Route path="terms" element={<BlockSuperAdmin><Terms /></BlockSuperAdmin>} />
-                <Route path="sms" element={<BlockSuperAdmin><SmsReminders /></BlockSuperAdmin>} />
-                <Route path="reports" element={<BlockSuperAdmin><Reports /></BlockSuperAdmin>} />
-                <Route path="staff" element={<BlockSuperAdmin><Staff /></BlockSuperAdmin>} />
-                <Route path="settings" element={<BlockSuperAdmin><Settings /></BlockSuperAdmin>} />
-                <Route path="audit-logs" element={<BlockSuperAdmin><AuditLogs /></BlockSuperAdmin>} />
-                <Route path="receipts/:transactionId" element={<BlockSuperAdmin><Receipt /></BlockSuperAdmin>} />
+              <Route element={<Layout />}>
+                <Route path="/dashboard" element={<BlockSuperAdmin><Dashboard /></BlockSuperAdmin>} />
+                <Route path="/students" element={<BlockSuperAdmin><Students /></BlockSuperAdmin>} />
+                <Route path="/students/:studentId/ledger" element={<BlockSuperAdmin><StudentLedger /></BlockSuperAdmin>} />
+                <Route path="/finance" element={<BlockSuperAdmin><Finance /></BlockSuperAdmin>} />
+                <Route path="/finance/suspense" element={<BlockSuperAdmin><Suspense /></BlockSuperAdmin>} />
+                <Route path="/fees" element={<BlockSuperAdmin><Fees /></BlockSuperAdmin>} />
+                <Route path="/terms" element={<BlockSuperAdmin><Terms /></BlockSuperAdmin>} />
+                <Route path="/sms" element={<BlockSuperAdmin><SmsReminders /></BlockSuperAdmin>} />
+                <Route path="/reports" element={<BlockSuperAdmin><Reports /></BlockSuperAdmin>} />
+                <Route path="/staff" element={<BlockSuperAdmin><Staff /></BlockSuperAdmin>} />
+                <Route path="/settings" element={<BlockSuperAdmin><Settings /></BlockSuperAdmin>} />
+                <Route path="/audit-logs" element={<BlockSuperAdmin><AuditLogs /></BlockSuperAdmin>} />
+                <Route path="/receipts/:transactionId" element={<BlockSuperAdmin><Receipt /></BlockSuperAdmin>} />
 
-                <Route path="admin/dashboard" element={<RequireSuperAdmin><PlatformDashboard /></RequireSuperAdmin>} />
-                <Route path="admin/schools" element={<RequireSuperAdmin><AdminSchools /></RequireSuperAdmin>} />
-                <Route path="admin/settings" element={<RequireSuperAdmin><PlatformSettings /></RequireSuperAdmin>} />
+                <Route path="/admin/dashboard" element={<RequireSuperAdmin><PlatformDashboard /></RequireSuperAdmin>} />
+                <Route path="/admin/schools" element={<RequireSuperAdmin><AdminSchools /></RequireSuperAdmin>} />
+                <Route path="/admin/settings" element={<RequireSuperAdmin><PlatformSettings /></RequireSuperAdmin>} />
               </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Router>
         </SocketProvider>
