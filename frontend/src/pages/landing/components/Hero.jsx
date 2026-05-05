@@ -29,13 +29,11 @@ const Hero = () => {
   ];
 
   return (
-    // overflow-x-hidden clips the decorative orbs without cutting off the
-    // absolutely-positioned floating notification card at the bottom.
     <section
       id="top"
-      className="relative bg-gradient-to-b from-fd-blue-50 via-white to-white"
+      className="relative overflow-hidden bg-gradient-to-b from-fd-blue-50 via-white to-white"
     >
-      <div className="overflow-x-hidden">
+      <div>
         {/* Decorative floating orbs — clipped horizontally, not vertically */}
         <div
           aria-hidden="true"
