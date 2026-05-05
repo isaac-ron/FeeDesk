@@ -3,8 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  /* clip horizontal overflow at the root so any overflowing child cannot
+     widen the page and break mx-auto centering inside hero/sections */
+  html {
+    overflow-x: clip;
+  }
   body {
     @apply font-body antialiased;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 }
 

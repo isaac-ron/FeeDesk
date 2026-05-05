@@ -48,17 +48,18 @@ const Hero = () => {
           <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-10">
 
             {/* ── Copy column ── */}
+            {/* min-w-0 prevents the column from expanding the grid track */}
             <div
               ref={copyRef}
-              className={`reveal lg:col-span-6 xl:col-span-7 ${copyVisible ? 'reveal-visible' : ''}`}
+              className={`reveal min-w-0 w-full lg:col-span-6 xl:col-span-7 ${copyVisible ? 'reveal-visible' : ''}`}
             >
               <span className="inline-flex items-center gap-2 rounded-full border border-fd-blue-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-brand text-primary">
                 <span className="fd-pulse-ring h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
                 Built for Kenyan schools
               </span>
 
-              {/* H1 — no hard <br />, scales from 36 → 48 → 60px */}
-              <h1 className="mt-4 font-header text-[2.25rem] font-extrabold leading-[1.08] tracking-tighter text-fd-gray-900 sm:mt-5 sm:text-5xl lg:text-6xl">
+              {/* H1: clamp scales linearly with viewport so wrapping always wins */}
+              <h1 className="mt-4 font-header text-[clamp(1.75rem,6vw,3.75rem)] font-extrabold leading-[1.1] tracking-tighter text-fd-gray-900 sm:mt-5">
                 School fees.{' '}
                 <span className="text-primary">Collected. Automatically.</span>
               </h1>
@@ -68,11 +69,11 @@ const Hero = () => {
                 parent's payment lands in the right student's account without lifting a finger.
               </p>
 
-              {/* CTAs — stack on mobile, row on sm+ */}
+              {/* CTAs — full-width stack on mobile, auto-width row on sm+ */}
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href="#contact"
-                  className="group inline-flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-3.5 text-base font-bold text-white shadow-lg shadow-fd-blue-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-xl active:translate-y-0 sm:py-4"
+                  className="group flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-3.5 text-base font-bold text-white shadow-lg shadow-fd-blue-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-xl active:translate-y-0 sm:inline-flex sm:w-auto sm:py-4"
                 >
                   Request a Demo
                   <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:translate-x-1">
@@ -81,7 +82,7 @@ const Hero = () => {
                 </a>
                 <a
                   href="#how-it-works"
-                  className="group inline-flex items-center justify-center gap-2 rounded-full border border-fd-gray-300 bg-white px-7 py-3.5 text-base font-semibold text-fd-gray-900 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:text-primary sm:py-4"
+                  className="group flex items-center justify-center gap-2 rounded-full border border-fd-gray-300 bg-white px-7 py-3.5 text-base font-semibold text-fd-gray-900 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:text-primary sm:inline-flex sm:w-auto sm:py-4"
                 >
                   See how it works
                   <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:translate-y-0.5">
@@ -111,7 +112,7 @@ const Hero = () => {
             {/* ── Visual column — dashboard mockup ── */}
             <div
               ref={visualRef}
-              className={`reveal-scale lg:col-span-6 xl:col-span-5 ${visualVisible ? 'reveal-visible' : ''}`}
+              className={`reveal-scale min-w-0 w-full overflow-hidden lg:col-span-6 xl:col-span-5 ${visualVisible ? 'reveal-visible' : ''}`}
             >
               {/* Extra bottom padding on sm–md to prevent the floating card
                   from being clipped by the grid gap / next section. */}
