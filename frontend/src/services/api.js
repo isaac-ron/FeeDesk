@@ -4,10 +4,19 @@ import axios from 'axios';
 // 1. Environment variable set at build time: VITE_API_URL
 // 2. Runtime window config (injected by nginx)
 // 3. Relative to current host (default for production)
-const API_URL =
+const RAW_API_URL =
   import.meta.env.VITE_API_URL ||
   (typeof window !== 'undefined' && window.__API_URL__) ||
   `${window.location.protocol}//${window.location.host}/api`;
+
+// Every backend route is mounted under `/api`. Normalize the configured base so
+// the app works whether VITE_API_URL is set as "https://host/api" or just the
+// origin "https://host" — strip trailing slashes and guarantee a single `/api`
+// suffix. Prevents the "Not Found - /auth/login" 404 from a missing prefix.
+const API_URL = (() => {
+  const base = String(RAW_API_URL).replace(/\/+$/, '');
+  return /\/api$/i.test(base) ? base : `${base}/api`;
+})();
 
 const api = axios.create({
   baseURL: API_URL,
