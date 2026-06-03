@@ -4,6 +4,7 @@ const Transaction = require('../models/Transaction');
 const Student = require('../models/Student');
 const StudentFee = require('../models/StudentFee');
 const SmsLog = require('../models/SmsLog');
+const Term = require('../models/Term');
 const { protect } = require('../middleware/authMiddleware');
 
 // @desc    Get dashboard statistics
@@ -88,6 +89,15 @@ router.get('/stats', protect, async (req, res) => {
       status: 'Active'
     });
 
+    // Students with a non-zero balance ("owing") vs the rest ("cleared").
+    // currentBalance is kept in sync with the StudentFee ledger by balanceService.
+    const studentsOwing = await Student.countDocuments({
+      school: req.user.school,
+      status: 'Active',
+      currentBalance: { $gt: 0 }
+    });
+    const studentsCleared = Math.max(0, activeStudents - studentsOwing);
+
     const smsFilter = req.user.role === 'super_admin' ? {} : { school: req.user.school };
     const smsSent = await SmsLog.countDocuments({ ...smsFilter, status: 'SENT' });
 
@@ -96,7 +106,13 @@ router.get('/stats', protect, async (req, res) => {
       totalCollectedTodayChange: todayChange,
       outstandingBalance,
       outstandingPercentage,
+      // Term-collection figures for the dashboard hero strip. billedTerm is the
+      // total charged (== collected + outstanding); collectedTerm is total paid.
+      collectedTerm: totalPaid,
+      billedTerm: totalExpected,
       activeStudents,
+      studentsOwing,
+      studentsCleared,
       smsSent,
       systemStatus: 'operational'
     });
@@ -143,86 +159,80 @@ router.get('/transactions', protect, async (req, res) => {
 });
 
 // @desc    Get collection trends
-// @route   GET /api/dashboard/trends
+// @route   GET /api/dashboard/trends?range=30d|term|year   (legacy: ?days=)
 // @access  Private
+//
+// Returns a single normalized shape the dashboard TrendChart consumes:
+//   { range, total, totalLabel, sub, data: [Number...], xlabels: [String...] }
+// where `data` is the ordered bucket amounts (daily / weekly / monthly).
 router.get('/trends', protect, async (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 30;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+    const school = req.user.school;
 
-    const transactions = await Transaction.aggregate([
-      {
-        $match: {
-          school: req.user.school,
-          createdAt: { $gte: startDate },
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$amount' }
-        }
+    // Sum COMPLETED transactions in [start, end) bucketed by `groupId`, ordered.
+    const bucketSums = async (start, end, groupId) => {
+      const match = { school, status: 'COMPLETED', createdAt: { $gte: start } };
+      if (end) match.createdAt.$lt = end;
+      const rows = await Transaction.aggregate([
+        { $match: match },
+        { $group: { _id: groupId, amount: { $sum: '$amount' } } },
+        { $sort: { _id: 1 } }
+      ]);
+      return rows;
+    };
+
+    // Legacy ?days= consumers (no range) keep the old daily-window behaviour.
+    const rangeParam = req.query.range;
+    const range = rangeParam || (req.query.days ? '30d' : '30d');
+
+    let data = [];
+    let xlabels = [];
+    let totalLabel = 'Last 30 days';
+    let sub = 'Last 30 days · daily breakdown';
+
+    if (range === 'term') {
+      const term = await Term.findOne({ school, status: 'ACTIVE' });
+      if (term && term.startDate) {
+        const start = new Date(term.startDate);
+        start.setHours(0, 0, 0, 0);
+        const rows = await bucketSums(start, null, { $week: '$createdAt' });
+        data = rows.map(r => r.amount);
+        xlabels = rows.map((_, i) => `W${i + 1}`);
+        totalLabel = 'Term to date';
+        sub = `${term.name || 'This term'} · weekly breakdown`;
       }
-    ]);
+    } else if (range === 'year') {
+      // Calendar year of the active term (else current year), monthly buckets.
+      const term = await Term.findOne({ school, status: 'ACTIVE' });
+      const year = term?.academicYear ? parseInt(term.academicYear) : new Date().getFullYear();
+      const start = new Date(year, 0, 1);
+      const end = new Date(year + 1, 0, 1);
+      const rows = await bucketSums(start, end, { $month: '$createdAt' });
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      // Densify to 12 months so the bar chart and x-axis stay aligned.
+      const byMonth = new Map(rows.map(r => [r._id, r.amount]));
+      data = MONTHS.map((_, i) => byMonth.get(i + 1) || 0);
+      xlabels = ['Jan', 'Apr', 'Jul', 'Oct', 'Dec'];
+      totalLabel = 'Year to date';
+      sub = `${year} · monthly breakdown`;
+    }
 
-    const totalRevenue = transactions[0]?.total || 0;
+    // Default / fallback: last-30-days daily window.
+    if (data.length === 0) {
+      const days = parseInt(req.query.days) || 30;
+      const start = new Date();
+      start.setDate(start.getDate() - days);
+      start.setHours(0, 0, 0, 0);
+      const rows = await bucketSums(start, null, { $dayOfMonth: '$createdAt' });
+      data = rows.map(r => r.amount);
+      xlabels = ['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'];
+      totalLabel = 'Last 30 days';
+      sub = 'Last 30 days · daily breakdown';
+    }
 
-    // Group by week
-    const weeklyData = await Transaction.aggregate([
-      {
-        $match: {
-          school: req.user.school,
-          createdAt: { $gte: startDate },
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: { $week: '$createdAt' },
-          amount: { $sum: '$amount' }
-        }
-      },
-      {
-        $sort: { '_id': 1 }
-      }
-    ]);
+    const total = data.reduce((s, v) => s + v, 0);
 
-    const weeks = weeklyData.map((week, index) => ({
-      label: `Week ${index + 1}`,
-      amount: week.amount
-    }));
-
-    // Daily data for chart
-    const dailyData = await Transaction.aggregate([
-      {
-        $match: {
-          school: req.user.school,
-          createdAt: { $gte: startDate },
-          status: 'COMPLETED'
-        }
-      },
-      {
-        $group: {
-          _id: { $dayOfMonth: '$createdAt' },
-          amount: { $sum: '$amount' }
-        }
-      },
-      {
-        $sort: { '_id': 1 }
-      }
-    ]);
-
-    res.json({
-      totalRevenue,
-      weeks,
-      dailyData: dailyData.map(day => ({
-        day: day._id,
-        amount: day.amount
-      }))
-    });
+    res.json({ range, total, totalLabel, sub, data, xlabels });
   } catch (error) {
     console.error('Collection trends error:', error);
     res.status(500).json({ message: 'Server error' });

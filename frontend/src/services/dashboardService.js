@@ -24,10 +24,12 @@ const dashboardService = {
     }
   },
 
-  // Get collection trends
-  getCollectionTrends: async (days = 30) => {
+  // Get collection trends for a given range: '30d' | 'Term' | 'Year'.
+  // The backend buckets daily / weekly / monthly accordingly and returns a
+  // normalized { range, total, totalLabel, sub, data, xlabels } shape.
+  getCollectionTrends: async (range = '30d') => {
     try {
-      const response = await api.get(`/dashboard/trends?days=${days}`);
+      const response = await api.get(`/dashboard/trends?range=${encodeURIComponent(range.toLowerCase())}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching collection trends:', error);

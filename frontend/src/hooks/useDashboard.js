@@ -13,10 +13,10 @@ export const useRecentTransactions = (limit = 5) =>
     queryFn: () => dashboardService.getRecentTransactions(limit),
   });
 
-export const useCollectionTrends = (days = 30) =>
+export const useCollectionTrends = (range = '30d') =>
   useQuery({
-    queryKey: ['dashboard', 'trends', days],
-    queryFn: () => dashboardService.getCollectionTrends(days),
+    queryKey: ['dashboard', 'trends', range],
+    queryFn: () => dashboardService.getCollectionTrends(range),
   });
 
 export const usePaymentMethodsBreakdown = () =>

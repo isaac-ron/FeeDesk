@@ -5,7 +5,12 @@ export const mockDashboardStats = {
   totalCollectedTodayChange: 12, // percentage change vs yesterday
   outstandingBalance: 3200000,
   outstandingPercentage: 35,
+  // Term-collection figures for the hero strip (billedTerm == collected + outstanding)
+  collectedTerm: 4500000,
+  billedTerm: 7700000,
   activeStudents: 842,
+  studentsCleared: 488,
+  studentsOwing: 354,
   smsSent: 1204,
   systemStatus: 'operational'
 };
@@ -125,6 +130,33 @@ export const mockCollectionTrends = {
     { day: 29, amount: 215000 },
     { day: 30, amount: 225000 }
   ]
+};
+
+// Range-keyed trend shapes for the collection-trends filter (30d / Term / Year).
+// Mirrors the normalized API response: { data, xlabels, total, totalLabel, sub }.
+// Used as the fallback when the /dashboard/trends API is unavailable.
+export const mockTrendRanges = {
+  '30d': {
+    sub: 'Last 30 days · daily breakdown',
+    data: mockCollectionTrends.dailyData.map((d) => d.amount),
+    xlabels: ['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'],
+    total: 4500000,
+    totalLabel: 'Last 30 days',
+  },
+  Term: {
+    sub: 'This term · weekly breakdown',
+    data: [820, 910, 1050, 980, 1120, 1190, 1040, 1230, 1080, 1270, 1150, 1310, 1290].map((v) => v * 1000),
+    xlabels: ['W1', 'W4', 'W7', 'W10', 'W13'],
+    total: 14730000,
+    totalLabel: 'Term to date',
+  },
+  Year: {
+    sub: 'This year · monthly breakdown',
+    data: [1200, 1380, 1120, 420, 1480, 1610, 1320, 510, 1690, 1820, 1540, 920].map((v) => v * 1000),
+    xlabels: ['Jan', 'Apr', 'Jul', 'Oct', 'Dec'],
+    total: 15510000,
+    totalLabel: 'Year to date',
+  },
 };
 
 export const mockPaymentMethods = {

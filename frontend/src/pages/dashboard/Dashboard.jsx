@@ -8,10 +8,142 @@ import { AuthContext } from '../../context/AuthContext';
 import {
   mockDashboardStats,
   mockRecentTransactions,
-  mockCollectionTrends,
-  mockPaymentMethods,
-  mockStudentAvatars
+  mockTrendRanges,
+  mockPaymentMethods
 } from '../../utils/mockData';
+
+const formatCurrency = (amount) =>
+  new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount || 0).replace('KES', 'KES ');
+
+const formatNumber = (num) => new Intl.NumberFormat('en-US').format(num || 0);
+
+// Compact axis/average formatter — 1.2M, 145K, etc.
+const fmtShort = (n) => {
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.0+$/, '') + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'K';
+  return String(Math.round(n || 0));
+};
+
+const TREND_RANGES = ['30d', 'Term', 'Year'];
+
+// Fee-collection trends with the 30d / Term / Year range filter. Holds its own
+// `range` state and re-queries via useCollectionTrends, falling back to mock
+// shapes when the API is unavailable.
+const TrendChart = () => {
+  const [range, setRange] = useState('30d');
+  const { data: cfg = mockTrendRanges[range] } = useCollectionTrends(range);
+
+  const data = cfg?.data?.length ? cfg.data : mockTrendRanges[range].data;
+  const xlabels = cfg?.xlabels?.length ? cfg.xlabels : mockTrendRanges[range].xlabels;
+  const total = cfg?.total ?? mockTrendRanges[range].total;
+  const totalLabel = cfg?.totalLabel ?? mockTrendRanges[range].totalLabel;
+  const sub = cfg?.sub ?? mockTrendRanges[range].sub;
+
+  const max = Math.max(...data, 1);
+  const avg = data.length ? data.reduce((s, v) => s + v, 0) / data.length : 0;
+
+  return (
+    <div className="flex-[2] min-w-0 flex flex-col rounded-[18px] border border-surface-border bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+      {/* Header: title + range filter + total */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h3 className="text-[17px] font-extrabold tracking-tight text-text-main font-display">Fee collection trends</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">{sub}</p>
+        </div>
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex items-center gap-0.5 rounded-full bg-fd-gray-100 p-[3px]">
+            {TREND_RANGES.map((r) => {
+              const on = r === range;
+              return (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  className={`px-[15px] py-1.5 rounded-full text-xs font-bold transition-all ${
+                    on
+                      ? 'bg-primary text-white shadow-[0_2px_6px_rgba(18,81,163,0.28)]'
+                      : 'bg-transparent text-text-muted hover:text-text-main'
+                  }`}
+                >
+                  {r}
+                </button>
+              );
+            })}
+          </div>
+          <div className="text-right whitespace-nowrap">
+            <span className="text-[21px] font-extrabold tracking-tight text-primary tabular-nums font-display">{formatCurrency(total)}</span>
+            <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-fd-gray-400">{totalLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Plot area */}
+      <div className="flex-1 relative pl-[38px]">
+        {/* Y-axis labels */}
+        <div className="absolute left-0 top-0 bottom-[22px] flex flex-col justify-between text-[10px] font-semibold text-fd-gray-400 pointer-events-none">
+          <span>{fmtShort(max)}</span>
+          <span>{fmtShort(max / 2)}</span>
+          <span>0</span>
+        </div>
+        <div className="relative h-[200px]">
+          {/* Gridlines */}
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="absolute left-0 right-0 border-t border-dashed border-[#EEF1F4]" style={{ top: `${i * 50}%` }} />
+          ))}
+          {/* Average line */}
+          <div className="absolute left-0 right-0 border-t-2 border-dashed border-[#F0B574] z-[2]" style={{ top: `${(1 - avg / max) * 100}%` }}>
+            <span className="absolute right-0 -top-4 text-[9.5px] font-bold text-[#D97706] bg-white px-1">Avg {fmtShort(avg)}</span>
+          </div>
+          {/* Bars */}
+          <div className="absolute inset-0 flex items-end" style={{ gap: range === '30d' ? 3 : 6 }}>
+            {data.map((v, i) => {
+              const isLast = i === data.length - 1;
+              const isMax = v === max;
+              return (
+                <div
+                  key={i}
+                  className="flex-1 rounded-t group relative"
+                  style={{
+                    height: `${(v / max) * 100}%`,
+                    minHeight: 2,
+                    opacity: isLast || isMax ? 1 : 0.85,
+                    background: isLast
+                      ? 'linear-gradient(180deg,#16A34A,#15A04790)'
+                      : isMax
+                      ? 'linear-gradient(180deg,#1251A3,#1251A370)'
+                      : 'linear-gradient(180deg,#5CB8FF,#93D0FF)',
+                  }}
+                >
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-20 whitespace-nowrap rounded-lg bg-text-main px-2.5 py-1.5 text-[10px] font-medium text-white shadow-lg">
+                    {formatCurrency(v)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* X-axis labels */}
+        <div className="flex justify-between mt-2 pt-2 border-t border-fd-gray-100 text-[10px] font-bold uppercase tracking-wide text-fd-gray-400">
+          {xlabels.map((l, i) => (
+            <span key={i}>{l}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-[18px] mt-3.5 text-[11px] font-semibold text-text-muted">
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary-light" />This period</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary" />Peak</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-success" />Latest</span>
+        <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-2 border-dashed border-[#F0B574]" />Average</span>
+      </div>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const { openSidebar } = useOutletContext() || {};
@@ -23,7 +155,6 @@ const Dashboard = () => {
 
   const { data: stats = mockDashboardStats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { data: transactions = mockRecentTransactions.slice(0, 5), isLoading: txnLoading } = useRecentTransactions(5);
-  const { data: trends = mockCollectionTrends } = useCollectionTrends(30);
   const { data: paymentMethods = mockPaymentMethods } = usePaymentMethodsBreakdown();
 
   const loading = statsLoading || txnLoading;
@@ -61,18 +192,15 @@ const Dashboard = () => {
     };
   }, [socket, queryClient]);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount).replace('KES', 'KES ');
-  };
+  // Hero-strip derived figures. billedTerm falls back to collected + outstanding
+  // if the API omits it; progressPct is collected / billed.
+  const collectedTerm = stats.collectedTerm ?? stats.totalCollectedToday ?? 0;
+  const billedTerm = stats.billedTerm ?? (collectedTerm + (stats.outstandingBalance || 0));
+  const progressPct = billedTerm > 0 ? Math.round((collectedTerm / billedTerm) * 100) : 0;
+  const studentsOwing = stats.studentsOwing ?? 0;
+  const studentsCleared = stats.studentsCleared ?? Math.max(0, (stats.activeStudents || 0) - studentsOwing);
 
-  const formatNumber = (num) => {
-    return new Intl.NumberFormat('en-US').format(num);
-  };
+  const totalTxns = (paymentMethods.mpesa?.count || 0) + (paymentMethods.bank?.count || 0);
 
   return (
     <>
@@ -91,7 +219,7 @@ const Dashboard = () => {
                 placeholder="Search student or adm no..."
               />
             </div>
-            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-blue-900 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/10">
+            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/20">
               <span className="material-symbols-outlined text-[20px]">add</span>
               <span className="hidden sm:inline">Record Payment</span>
             </button>
@@ -102,7 +230,7 @@ const Dashboard = () => {
           </>
         }
       />
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-slate-50/50">
+      <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-[22px] bg-surface-light">
         {/* Live Update Notification */}
         {liveUpdate && (
           <div className={`${
@@ -120,7 +248,7 @@ const Dashboard = () => {
             <span className="text-xs font-mono opacity-50">just now</span>
           </div>
         )}
-        
+
         {/* Error Banner */}
         {error && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
@@ -138,321 +266,183 @@ const Dashboard = () => {
 
         {!loading && (
           <>
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-              {/* Total Collected Today */}
-              <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-                <div className="absolute -top-2 -right-2 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
-                  <span className="material-symbols-outlined text-8xl text-primary">payments</span>
+            {/* 1 · Term-collection progress hero strip */}
+            <div className="flex flex-wrap items-center gap-7 rounded-[20px] px-7 py-6 text-white bg-[linear-gradient(115deg,#103A7A,#1251A3_55%,#1A65C9)] shadow-[0_14px_34px_rgba(18,81,163,0.28)]">
+              <div className="flex-1 min-w-[260px]">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-fd-blue-200">Term collection progress</div>
+                <div className="flex items-baseline gap-3 mt-1.5 flex-wrap">
+                  <span className="text-[34px] font-extrabold tracking-tight leading-none font-display">{formatCurrency(collectedTerm)}</span>
+                  <span className="text-sm font-semibold text-fd-blue-100">of {formatCurrency(billedTerm)} billed</span>
                 </div>
-                <div className="flex flex-col gap-2 z-10">
-                  <p className="text-text-muted text-sm font-semibold uppercase tracking-wide">Total Collected Today</p>
-                  <p className="text-text-main text-3xl font-extrabold tracking-tight font-display">
-                    {formatCurrency(stats.totalCollectedToday)}
-                  </p>
+                <div className="mt-3.5 h-[9px] rounded-full overflow-hidden bg-white/[0.18]">
+                  <div className="h-full rounded-full bg-[linear-gradient(90deg,#5CB8FF,#C7E8FF)]" style={{ width: `${progressPct}%` }} />
                 </div>
-                <div className="flex items-center gap-1.5 mt-5 z-10">
-                  <div className="bg-success/10 rounded-full px-2 py-0.5 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-success text-sm">
+              </div>
+              <div className="hidden sm:block w-px h-14 bg-white/[0.18]" />
+              <div className="text-center">
+                <div className="text-[40px] font-extrabold tracking-tight leading-none font-display">{progressPct}%</div>
+                <div className="text-[11.5px] font-semibold text-fd-blue-200 mt-1">collected</div>
+              </div>
+              <div className="hidden sm:block w-px h-14 bg-white/[0.18]" />
+              <div className="text-center">
+                <div className="text-[40px] font-extrabold tracking-tight leading-none font-display">{formatNumber(studentsOwing)}</div>
+                <div className="text-[11.5px] font-semibold text-fd-blue-200 mt-1">students owing</div>
+              </div>
+            </div>
+
+            {/* 2 · Stat cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[18px]">
+              {/* Collected today */}
+              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+                <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">payments</span>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Collected today</p>
+                <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatCurrency(stats.totalCollectedToday)}</p>
+                <div className="flex items-center gap-1.5 mt-3.5 text-[12.5px]">
+                  <span className="flex items-center gap-1 rounded-full bg-success/10 text-success font-bold px-2 py-0.5">
+                    <span className="material-symbols-outlined text-[15px]">
                       {stats.totalCollectedTodayChange >= 0 ? 'trending_up' : 'trending_down'}
                     </span>
-                    <p className={`text-sm font-bold ${stats.totalCollectedTodayChange >= 0 ? 'text-success' : 'text-red-600'}`}>
-                      {stats.totalCollectedTodayChange >= 0 ? '+' : ''}{stats.totalCollectedTodayChange}%
-                    </p>
-                  </div>
-                  <p className="text-text-muted text-xs font-medium">vs yesterday</p>
-                </div>
-              </div>
-
-              {/* Outstanding Balance */}
-              <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden hover:shadow-md transition-shadow">
-                <div className="absolute -top-2 -right-2 p-4 opacity-[0.03]">
-                  <span className="material-symbols-outlined text-8xl text-primary">account_balance_wallet</span>
-                </div>
-                <div className="flex flex-col gap-2 z-10">
-                  <p className="text-text-muted text-sm font-semibold uppercase tracking-wide">Outstanding Balance</p>
-                  <p className="text-text-main text-3xl font-extrabold tracking-tight font-display">
-                    {formatCurrency(stats.outstandingBalance)}
-                  </p>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full mt-6">
-                  <div 
-                    className="bg-orange-500 h-2 rounded-full shadow-sm" 
-                    style={{width: `${stats.outstandingPercentage}%`}}
-                  ></div>
-                </div>
-                <p className="text-text-muted text-xs mt-2 font-medium">
-                  {stats.outstandingPercentage}% pending collection
-                </p>
-              </div>
-
-              {/* Active Students */}
-              <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden hover:shadow-md transition-shadow">
-                <div className="absolute -top-2 -right-2 p-4 opacity-[0.03]">
-                  <span className="material-symbols-outlined text-8xl text-primary">groups</span>
-                </div>
-                <div className="flex flex-col gap-2 z-10">
-                  <p className="text-text-muted text-sm font-semibold uppercase tracking-wide">Active Students</p>
-                  <p className="text-text-main text-3xl font-extrabold tracking-tight font-display">
-                    {formatNumber(stats.activeStudents)}
-                  </p>
-                </div>
-                <div className="mt-5 flex -space-x-3">
-                  {mockStudentAvatars.map((avatar, index) => (
-                    <div 
-                      key={index}
-                      className="size-9 rounded-full bg-slate-200 border-2 border-white shadow-sm bg-cover bg-center" 
-                      style={{backgroundImage: `url("${avatar}")`}}
-                    ></div>
-                  ))}
-                  <div className="size-9 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] text-text-muted font-bold shadow-sm">
-                    +{stats.activeStudents - 3}
-                  </div>
-                </div>
-              </div>
-
-              {/* SMS Sent */}
-              <div className="flex flex-col justify-between p-6 rounded-2xl border border-surface-border bg-white shadow-sm relative overflow-hidden hover:shadow-md transition-shadow">
-                <div className="absolute -top-2 -right-2 p-4 opacity-[0.03]">
-                  <span className="material-symbols-outlined text-8xl text-primary">sms</span>
-                </div>
-                <div className="flex flex-col gap-2 z-10">
-                  <p className="text-text-muted text-sm font-semibold uppercase tracking-wide">SMS Sent</p>
-                  <p className="text-text-main text-3xl font-extrabold tracking-tight font-display">
-                    {formatNumber(stats.smsSent)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 mt-5 z-10">
-                  <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                  <p className="text-text-muted text-xs font-medium">
-                    {stats.systemStatus === 'operational' ? 'All systems operational' : 'System issues detected'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Fee Collection Trends - Bar Chart */}
-          <div className="lg:col-span-2 rounded-2xl border border-surface-border bg-white p-6 flex flex-col shadow-sm">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="text-text-main text-xl font-bold font-display">Fee Collection Trends</h3>
-                <p className="text-text-muted text-sm mt-1">Last 30 Days &middot; Daily breakdown</p>
-              </div>
-              <div className="text-right">
-                <p className="text-primary text-2xl font-bold tracking-tight font-display">
-                  {formatCurrency(trends.totalRevenue)}
-                </p>
-                <p className="text-text-muted text-xs uppercase tracking-wider font-bold">Revenue</p>
-              </div>
-            </div>
-            {/* Bar chart */}
-            {(() => {
-              const data = trends.dailyData || [];
-              const maxAmount = Math.max(...data.map(d => d.amount), 1);
-              const avgAmount = data.length > 0 ? data.reduce((s, d) => s + d.amount, 0) / data.length : 0;
-
-              return (
-                <div className="flex-1 w-full min-h-[250px] relative">
-                  {/* Y-axis labels */}
-                  <div className="absolute left-0 top-0 bottom-8 w-16 flex flex-col justify-between text-[10px] text-text-muted font-medium pointer-events-none">
-                    <span>{(maxAmount / 1000).toFixed(0)}K</span>
-                    <span>{(maxAmount / 2000).toFixed(0)}K</span>
-                    <span>0</span>
-                  </div>
-                  {/* Bars container */}
-                  <div className="ml-16 h-full flex flex-col">
-                    <div className="flex-1 relative">
-                      {/* Grid lines */}
-                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                        <div className="border-b border-dashed border-slate-200"></div>
-                        <div className="border-b border-dashed border-slate-200"></div>
-                        <div className="border-b border-slate-200"></div>
-                      </div>
-                      {/* Average line */}
-                      <div
-                        className="absolute left-0 right-0 border-t-2 border-dashed border-orange-300 pointer-events-none z-10"
-                        style={{ top: `${((1 - avgAmount / maxAmount) * 100).toFixed(1)}%` }}
-                      >
-                        <span className="absolute -top-4 right-0 text-[10px] text-orange-500 font-bold bg-white px-1 rounded">
-                          Avg {(avgAmount / 1000).toFixed(0)}K
-                        </span>
-                      </div>
-                      {/* Bars */}
-                      <div className="absolute inset-0 flex items-end gap-[2px] px-0.5">
-                        {data.map((d, i) => {
-                          const heightPct = (d.amount / maxAmount) * 100;
-                          const isWeekend = d.day % 7 === 6 || d.day % 7 === 0;
-                          const isMax = d.amount === maxAmount;
-                          const isToday = i === data.length - 1;
-                          return (
-                            <div key={d.day} className="flex-1 flex flex-col items-center group relative" style={{ height: '100%' }}>
-                              {/* Tooltip */}
-                              <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center z-20">
-                                <div className="bg-slate-800 text-white text-[10px] rounded-lg px-2.5 py-1.5 whitespace-nowrap font-medium shadow-lg">
-                                  <span className="font-bold">Day {d.day}</span>
-                                  <br />
-                                  {formatCurrency(d.amount)}
-                                </div>
-                                <div className="size-2 bg-slate-800 rotate-45 -mt-1"></div>
-                              </div>
-                              <div className="w-full mt-auto relative">
-                                <div
-                                  className={`w-full rounded-t-sm transition-all duration-200 group-hover:opacity-90 ${
-                                    isToday
-                                      ? 'bg-green-500 shadow-sm shadow-green-200'
-                                      : isMax
-                                      ? 'bg-primary shadow-sm shadow-blue-200'
-                                      : isWeekend
-                                      ? 'bg-slate-300'
-                                      : 'bg-primary/70'
-                                  }`}
-                                  style={{ height: `${heightPct}%`, minHeight: '2px' }}
-                                ></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {/* X-axis labels */}
-                    <div className="flex justify-between text-text-muted text-[10px] font-bold mt-2 pt-2 border-t border-slate-100 uppercase tracking-wide">
-                      {trends.weeks.map((week, index) => (
-                        <span key={index}>{week.label}</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            {/* Legend */}
-            <div className="flex items-center gap-5 mt-3 text-[11px] text-text-muted font-medium">
-              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary/70"></span>Weekday</span>
-              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-slate-300"></span>Weekend</span>
-              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-green-500"></span>Today</span>
-              <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed border-orange-300"></span>Average</span>
-            </div>
-          </div>
-
-          {/* Payment Methods Breakdown */}
-          <div className="rounded-2xl border border-surface-border bg-white p-6 flex flex-col shadow-sm">
-            <h3 className="text-text-main text-xl font-bold font-display mb-1">Payment Methods</h3>
-            <p className="text-text-muted text-sm mb-6">Distribution by channel</p>
-            {/* Donut chart */}
-            <div className="flex-1 flex items-center justify-center relative my-2">
-              <div
-                className="size-48 rounded-full relative"
-                style={{background: `conic-gradient(#1e3a8a 0% ${paymentMethods.mpesa.percentage}%, #94a3b8 ${paymentMethods.mpesa.percentage}% 100%)`}}
-              >
-                <div className="absolute inset-7 bg-white rounded-full flex flex-col items-center justify-center z-10 shadow-inner">
-                  <span className="text-sm text-text-muted font-bold uppercase tracking-wider">Total</span>
-                  <span className="text-lg font-extrabold text-text-main font-display mt-0.5">
-                    {formatNumber((paymentMethods.mpesa.count || 0) + (paymentMethods.bank.count || 0))}
+                    {stats.totalCollectedTodayChange >= 0 ? '+' : ''}{stats.totalCollectedTodayChange}%
                   </span>
-                  <span className="text-[10px] text-text-muted font-medium mt-0.5">transactions</span>
+                  <span className="text-fd-gray-400 font-medium">vs yesterday</span>
                 </div>
               </div>
-            </div>
-            {/* Method details */}
-            <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-slate-100">
-              {/* MPESA */}
-              <div className="flex items-center gap-3">
-                <span className="size-3 rounded-full bg-primary flex-shrink-0"></span>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-text-main font-semibold">MPESA</span>
-                    <span className="text-sm text-text-main font-bold">{paymentMethods.mpesa.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5">
-                    <div className="bg-primary h-1.5 rounded-full transition-all duration-500" style={{width: `${paymentMethods.mpesa.percentage}%`}}></div>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[11px] text-text-muted">{formatCurrency(paymentMethods.mpesa.amount)}</span>
-                    <span className="text-[11px] text-text-muted">{formatNumber(paymentMethods.mpesa.count || 0)} txns</span>
-                  </div>
-                </div>
-              </div>
-              {/* Bank */}
-              <div className="flex items-center gap-3">
-                <span className="size-3 rounded-full bg-slate-400 flex-shrink-0"></span>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-text-main font-semibold">Bank Transfer</span>
-                    <span className="text-sm text-text-main font-bold">{paymentMethods.bank.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5">
-                    <div className="bg-slate-400 h-1.5 rounded-full transition-all duration-500" style={{width: `${paymentMethods.bank.percentage}%`}}></div>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[11px] text-text-muted">{formatCurrency(paymentMethods.bank.amount)}</span>
-                    <span className="text-[11px] text-text-muted">{formatNumber(paymentMethods.bank.count || 0)} txns</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Live Transactions Feed */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-text-main text-xl font-bold tracking-tight font-display">Live Transactions Feed</h3>
-            <button className="text-primary text-sm font-bold hover:underline flex items-center gap-1">
-              View All
-              <span className="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
-          </div>
-          <div className="rounded-2xl border border-surface-border bg-white overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-surface-border text-text-muted text-xs uppercase tracking-wider font-bold">
-                    <th className="p-5 pl-8 font-semibold">Transaction ID</th>
-                    <th className="p-5 font-semibold">Student Name</th>
-                    <th className="p-5 font-semibold">Amount</th>
-                    <th className="p-5 font-semibold">Source</th>
-                    <th className="p-5 pr-8 font-semibold text-right">Time</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm divide-y divide-surface-border">
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id} className="group hover:bg-slate-50 transition-colors">
-                      <td className="p-5 pl-8 text-text-main font-mono text-xs font-medium">#{transaction.id}</td>
-                      <td className="p-5">
-                        <div className="flex flex-col">
-                          <span className="text-text-main font-bold">{transaction.studentName}</span>
-                          <span className="text-text-muted text-xs">Adm: {transaction.admissionNumber}</span>
-                        </div>
-                      </td>
-                      <td className="p-5 text-success font-extrabold text-base">
-                        {formatCurrency(transaction.amount)}
-                      </td>
-                      <td className="p-5">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold ${
-                          transaction.source === 'MPESA' 
-                            ? 'bg-green-50 text-green-700 border border-green-100'
-                            : 'bg-blue-50 text-blue-700 border border-blue-100'
-                        }`}>
-                          {transaction.source}
-                        </span>
-                      </td>
-                      <td className="p-5 pr-8 text-text-muted text-right font-medium">{transaction.time}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Outstanding balance */}
+              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+                <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">account_balance_wallet</span>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Outstanding balance</p>
+                <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatCurrency(stats.outstandingBalance)}</p>
+                <div className="mt-3.5 h-[7px] rounded-full bg-fd-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-[#D97706]" style={{ width: `${stats.outstandingPercentage}%` }} />
+                </div>
+                <p className="mt-1.5 text-[11.5px] font-medium text-fd-gray-400">{stats.outstandingPercentage}% pending collection</p>
+              </div>
+
+              {/* Active students */}
+              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+                <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">groups</span>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Active students</p>
+                <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatNumber(stats.activeStudents)}</p>
+                <div className="flex items-center gap-2 mt-3.5 text-[12.5px] font-medium text-text-muted">
+                  <span className="text-success font-bold">{formatNumber(studentsCleared)} cleared</span>
+                  ·
+                  <span className="text-[#D97706] font-bold">{formatNumber(studentsOwing)} owing</span>
+                </div>
+              </div>
+
+              {/* SMS reminders sent */}
+              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+                <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">sms</span>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">SMS reminders sent</p>
+                <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatNumber(stats.smsSent)}</p>
+                <div className="flex items-center gap-1.5 mt-3.5 text-[12.5px] font-medium text-text-muted">
+                  <span className="material-symbols-outlined text-[16px] text-success">check_circle</span>
+                  {stats.systemStatus === 'operational' ? 'All systems operational' : 'System issues detected'}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+
+            {/* 3 · Charts row */}
+            <div className="flex flex-col lg:flex-row gap-[18px]">
+              <TrendChart />
+
+              {/* Payment methods donut */}
+              <div className="flex-1 min-w-0 flex flex-col rounded-[18px] border border-surface-border bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+                <h3 className="text-[17px] font-extrabold tracking-tight text-text-main font-display">Payment methods</h3>
+                <p className="text-[12.5px] text-text-muted mt-0.5">Distribution by channel</p>
+                <div className="flex-1 flex items-center justify-center py-[18px]">
+                  <div
+                    className="size-[168px] rounded-full relative"
+                    style={{ background: `conic-gradient(#1251A3 0 ${paymentMethods.mpesa?.percentage || 0}%, #C7E8FF ${paymentMethods.mpesa?.percentage || 0}% 100%)` }}
+                  >
+                    <div className="absolute inset-[26px] bg-white rounded-full flex flex-col items-center justify-center shadow-[inset_0_1px_4px_rgba(0,0,0,0.05)]">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-fd-gray-400">Total</span>
+                      <span className="text-2xl font-extrabold tracking-tight text-text-main font-display">{formatNumber(totalTxns)}</span>
+                      <span className="text-[10.5px] font-medium text-fd-gray-400">transactions</span>
+                    </div>
+                  </div>
+                </div>
+                {[
+                  { k: 'MPESA', dot: 'bg-primary', d: paymentMethods.mpesa },
+                  { k: 'Bank transfer', dot: 'bg-fd-blue-100', d: paymentMethods.bank },
+                ].map((m) => (
+                  <div key={m.k} className="pt-3 mt-3 border-t border-fd-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-[13.5px] font-bold text-text-main">
+                        <span className={`size-[11px] rounded-sm ${m.dot}`} />{m.k}
+                      </span>
+                      <span className="text-[13.5px] font-extrabold text-text-main">{m.d?.percentage || 0}%</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 text-[11.5px] text-text-muted">
+                      <span>{formatCurrency(m.d?.amount)}</span>
+                      <span>{formatNumber(m.d?.count || 0)} txns</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 4 · Live transactions */}
+            <div className="flex flex-col gap-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[17px] font-extrabold tracking-tight text-text-main font-display">Live transactions</h3>
+                  <span className="flex items-center gap-1.5 rounded-full bg-success/[0.08] text-success text-[11px] font-bold px-2.5 py-[3px]">
+                    <span className="size-1.5 rounded-full bg-success" /> Live
+                  </span>
+                </div>
+                <button className="flex items-center gap-1 text-primary text-[13px] font-bold hover:underline">
+                  View all
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </button>
+              </div>
+              <div className="rounded-[18px] border border-surface-border bg-white overflow-hidden shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[13.5px]">
+                    <thead>
+                      <tr className="bg-surface-light border-b border-surface-border text-fd-gray-400 text-[10.5px] uppercase tracking-wide font-bold">
+                        <th className="px-5 py-3.5 font-bold">Reference</th>
+                        <th className="px-5 py-3.5 font-bold">Student</th>
+                        <th className="px-5 py-3.5 font-bold">Amount</th>
+                        <th className="px-5 py-3.5 font-bold">Channel</th>
+                        <th className="px-5 py-3.5 font-bold text-right">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-fd-gray-100">
+                      {transactions.map((transaction) => {
+                        const isMpesa = transaction.source === 'MPESA';
+                        return (
+                          <tr key={transaction.id} className="hover:bg-surface-light transition-colors">
+                            <td className="px-5 py-3.5 font-mono-brand text-xs text-text-muted">{transaction.id}</td>
+                            <td className="px-5 py-3.5">
+                              <div className="font-bold text-text-main">{transaction.studentName}</div>
+                              <div className="text-[11.5px] text-fd-gray-400">Adm {transaction.admissionNumber}</div>
+                            </td>
+                            <td className="px-5 py-3.5 font-extrabold text-success tabular-nums">{formatCurrency(transaction.amount)}</td>
+                            <td className="px-5 py-3.5">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                isMpesa ? 'bg-success/[0.08] text-success' : 'bg-primary/[0.07] text-primary'
+                              }`}>
+                                {transaction.source}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right font-medium text-fd-gray-400">{transaction.time}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </>
         )}
 
-        <div className="h-8"></div>
+        <div className="h-4"></div>
       </div>
     </>
   );
 };
 
 export default Dashboard;
-
