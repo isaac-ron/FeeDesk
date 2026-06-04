@@ -33,6 +33,15 @@ const studentSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    // Forgiving form of admissionNumber for payment matching (uppercased,
+    // punctuation/space-stripped, leading-zeros-stripped). Precomputed on
+    // save/insert so the matching ladder can do an indexed lookup. See
+    // utils/matchUtils.normalizeRef.
+    admissionNumberNormalized: {
+        type: String,
+        default: null,
+        index: true
+    },
     stream: {
         type: String,
         trim: true
@@ -74,8 +83,26 @@ const studentSchema = new mongoose.Schema({
   timestamps: true // Automatically adds createdAt and updatedAt
 });
 
+// Keep admissionNumberNormalized in sync with admissionNumber. Covers both
+// single saves (Student.create / doc.save) and bulk Student.insertMany.
+const { normalizeRef } = require('../utils/matchUtils');
+studentSchema.pre('save', function (next) {
+  if (this.isModified('admissionNumber') || this.isNew) {
+    this.admissionNumberNormalized = normalizeRef(this.admissionNumber);
+  }
+  next();
+});
+studentSchema.pre('insertMany', function (next, docs) {
+  for (const d of docs) {
+    if (d && d.admissionNumber) d.admissionNumberNormalized = normalizeRef(d.admissionNumber);
+  }
+  next();
+});
+
 // Compound index to ensure admission numbers are unique per school
 studentSchema.index({ school: 1, admissionNumber: 1 }, { unique: true });
+// Indexed lookup for the matching ladder's normalized-reference tier.
+studentSchema.index({ school: 1, admissionNumberNormalized: 1 });
 
 // Index for efficient queries by school
 studentSchema.index({ school: 1, status: 1 });

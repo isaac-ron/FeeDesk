@@ -19,6 +19,7 @@ const {
   refundPayment,
   reallocatePayment,
   allocateUnappliedPayment,
+  reassignPayment,
 } = require('../controllers/paymentController');
 const { protect } = require('../middleware/authMiddleware');
 const { tenantMiddleware } = require('../middleware/tenantMiddleware');
@@ -68,6 +69,7 @@ router.get('/stats', getPaymentStats);
 // Suspense / unmatched payment management
 router.get('/unmatched', requireRole('admin', 'bursar'), getUnmatchedPayments);
 router.patch('/:id/match', requireRole('admin', 'bursar'), matchPayment);
+router.post('/:id/reassign', requireRole('admin', 'bursar'), reassignPayment);
 router.post('/:id/refund', requireRole('admin', 'bursar'), refundPayment);
 router.post('/:id/reallocate', requireRole('admin', 'bursar'), reallocatePayment);
 router.post('/:id/allocate', requireRole('admin', 'bursar'), allocateUnappliedPayment);

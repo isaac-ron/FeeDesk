@@ -28,6 +28,14 @@ const schoolSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Optional admission-number prefix (e.g. 'ADM') this school puts on its
+  // admission numbers. Lets the matching ladder tolerate parents who omit or
+  // include it when typing the payment reference. See matchingService.
+  admissionPrefix: {
+    type: String,
+    trim: true,
+    default: null
+  },
   contactEmail: {
     type: String,
     required: [true, 'Contact email is required'],

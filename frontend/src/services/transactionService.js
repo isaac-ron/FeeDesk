@@ -27,6 +27,12 @@ const transactionService = {
     const response = await api.get('/payments/stats');
     return response.data;
   },
+
+  // Reassign a matched payment to a different student (corrects a wrong match).
+  reassignPayment: async ({ transactionId, studentId }) => {
+    const response = await api.post(`/payments/${transactionId}/reassign`, { studentId });
+    return response.data;
+  },
 };
 
 export default transactionService;

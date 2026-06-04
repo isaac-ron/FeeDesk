@@ -59,26 +59,53 @@ const getSafaricomAllowList = () => {
 };
 
 /**
- * Middleware that restricts access to known Safaricom IP ranges.
- * Only enforced when MPESA_IP_WHITELIST_ENABLED=true.
- * In development, it logs warnings but allows all traffic through.
+ * Whether the allowlist should be enforced for this process.
+ *   - production: enforced BY DEFAULT (Safaricom does not sign C2B callbacks,
+ *     so this IP check is the only thing standing between the public
+ *     confirmation URL and forged payments). Opt out explicitly with
+ *     MPESA_IP_WHITELIST_ENABLED=false only if you have another guard.
+ *   - non-production: off unless MPESA_IP_WHITELIST_ENABLED=true, so local
+ *     testing via curl/ngrok isn't blocked.
+ */
+const isWhitelistEnforced = () => {
+  const flag = process.env.MPESA_IP_WHITELIST_ENABLED;
+  if (process.env.NODE_ENV === 'production') return flag !== 'false';
+  return flag === 'true';
+};
+
+/**
+ * Resolve the true client IP. Relies on `app.set('trust proxy', N)` matching
+ * the real number of proxy hops (Render = 1) so that `req.ip` is the IP that
+ * actually connected to our trusted edge — NOT a client-supplied, spoofable
+ * X-Forwarded-For value. We deliberately do not parse the leftmost XFF entry:
+ * an attacker can prepend a fake Safaricom IP there and the platform appends
+ * the real one, so the leftmost is untrustworthy.
+ */
+const resolveClientIp = (req) =>
+  String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+
+/**
+ * Middleware that restricts callbacks to known Safaricom IP ranges.
+ * Enforced per isWhitelistEnforced(); otherwise logs and allows.
  */
 const safaricomOnly = (req, res, next) => {
-  const enabled = process.env.MPESA_IP_WHITELIST_ENABLED === 'true';
-  const clientIp = req.ip || req.connection.remoteAddress || '';
-  const forwardedFor = req.headers['x-forwarded-for'] || '';
-  const sourceIp = forwardedFor.split(',')[0].trim() || clientIp;
-
+  const sourceIp = resolveClientIp(req);
   const allowList = getSafaricomAllowList();
-  const isAllowed = allowList.some(prefix => sourceIp.includes(prefix));
+  // Strict prefix match (startsWith), not substring includes — so a value like
+  // "1.2.3.4-196.201.214.0" can never satisfy the "196.201.214." prefix.
+  const isAllowed = allowList.some((prefix) => sourceIp.startsWith(prefix));
 
   if (!isAllowed) {
-    if (enabled) {
-      console.warn(`🚫 [MPESA] Blocked callback from non-Safaricom IP: ${sourceIp}`);
+    if (isWhitelistEnforced()) {
+      // Loud (error level) so a legit Safaricom range change is visible in logs
+      // and can be added to SAFARICOM_IPS rather than silently dropping money.
+      console.error(
+        `🚫 [MPESA] Blocked callback from non-Safaricom IP: ${sourceIp} ` +
+        `(x-forwarded-for: ${req.headers['x-forwarded-for'] || 'none'})`
+      );
       return res.status(403).json({ ResultCode: 1, ResultDesc: 'Forbidden' });
     }
-    // Development: warn but allow
-    console.warn(`⚠️  [MPESA] Callback from non-Safaricom IP (allowed in dev): ${sourceIp}`);
+    console.warn(`⚠️  [MPESA] Callback from non-Safaricom IP (whitelist NOT enforced): ${sourceIp}`);
   }
 
   next();
@@ -89,4 +116,8 @@ module.exports = {
   authLimiter,
   callbackLimiter,
   safaricomOnly,
+  // Exported for unit tests
+  isWhitelistEnforced,
+  resolveClientIp,
+  getSafaricomAllowList,
 };

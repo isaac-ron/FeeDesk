@@ -8,6 +8,7 @@ const bankService = require('../services/bankService');
 const { sendPaymentReceipt } = require('../services/smsService');
 const mpesaService = require('../services/mpesaService');
 const { allocatePayment } = require('../services/paymentAllocationService');
+const { learnFromMatch } = require('../services/matchingService');
 const { normalise } = require('../services/paymentNormalizer');
 const { getPaymentQueue, getSmsQueue } = require('../queues');
 const { recordAudit } = require('../services/auditService');
@@ -1027,11 +1028,29 @@ const matchPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Student belongs to a different school' });
     }
 
+    // Capture the originally-typed reference before we overwrite it, so the
+    // matching ladder can learn from this correction (Tier 0 alias).
+    const originalRef = transaction.reference;
+    const originalPhone = transaction.phoneNumber;
+
     // Link the transaction to the student
     transaction.student = student._id;
     transaction.reference = student.admissionNumber;
     transaction.status = 'COMPLETED';
+    transaction.matchMethod = 'MANUAL';
+    transaction.matchConfidence = 1;
+    transaction.suggestedMatches = [];
     await transaction.save();
+
+    // Learn this payer→student mapping so the next payment auto-matches.
+    // Non-blocking — never let alias-learning failure break the match.
+    learnFromMatch({
+      school: transaction.school,
+      originalRef,
+      payerPhone: originalPhone,
+      studentId: student._id,
+      userId: req.user._id,
+    }).catch((e) => console.error('[match] learnFromMatch error:', e.message));
 
     // Allocate to fee lines + create ledger entries
     const { allocations } = await allocatePayment({
@@ -1128,6 +1147,7 @@ const getUnmatchedPayments = async (req, res) => {
 
     const payments = await Transaction.find(filter)
       .populate('student', 'admissionNumber name classLevel')
+      .populate('suggestedMatches.student', 'admissionNumber name classLevel currentBalance')
       .sort({ createdAt: -1 });
 
     const data = payments.map((p) => ({
@@ -1403,6 +1423,113 @@ const allocateUnappliedPayment = async (req, res) => {
   }
 };
 
+// @desc    Reassign a matched payment to a DIFFERENT student (safety valve for
+//          a wrong auto-match). Unwinds the old student's allocations, re-links
+//          the transaction, and re-allocates to the new student.
+// @route   POST /api/payments/:id/reassign
+// @access  Private (owner/admin, bursar)
+const reassignPayment = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'studentId is required' });
+    }
+
+    const transaction = await Transaction.findById(req.params.id);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+    if (req.user.role !== 'super_admin' && transaction.school?.toString() !== req.user.school?.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (transaction.status === 'REVERSED') {
+      return res.status(409).json({ success: false, message: 'Cannot reassign a reversed payment' });
+    }
+    if (!transaction.student) {
+      return res.status(400).json({ success: false, message: 'Payment is unmatched — use /match instead' });
+    }
+    if (transaction.student.toString() === String(studentId)) {
+      return res.status(400).json({ success: false, message: 'Payment is already assigned to that student' });
+    }
+
+    const newStudent = await Student.findById(studentId);
+    if (!newStudent) {
+      return res.status(404).json({ success: false, message: 'Target student not found' });
+    }
+    if (newStudent.school.toString() !== transaction.school?.toString()) {
+      return res.status(400).json({ success: false, message: 'Student belongs to a different school' });
+    }
+
+    const previousStudentId = transaction.student;
+
+    // 1. Unwind the previous student's allocations (reverse amountPaid + ledger).
+    if (Array.isArray(transaction.allocations) && transaction.allocations.length) {
+      for (const alloc of transaction.allocations) {
+        const row = await StudentFee.findById(alloc.studentFee);
+        if (!row) continue;
+        row.amountPaid = Math.max(0, (row.amountPaid || 0) - (alloc.amount || 0));
+        await row.save();
+        const balanceAfter = -Math.max(0, (row.amountCharged || 0) - (row.amountPaid || 0));
+        await LedgerEntry.create({
+          school: transaction.school,
+          student: previousStudentId,
+          studentFee: alloc.studentFee,
+          term: row.term,
+          type: 'adjustment',
+          amount: -alloc.amount, // debit back — payment leaving this student
+          balanceAfter,
+          payment: transaction._id,
+          performedBy: req.user._id,
+          note: `Reassigned away from this student (txn ${transaction.transactionId})`,
+        });
+      }
+      const { recomputeStudentBalance } = require('../services/balanceService');
+      await recomputeStudentBalance(previousStudentId);
+    }
+
+    // 2. Re-link to the new student.
+    transaction.student = newStudent._id;
+    transaction.reference = newStudent.admissionNumber;
+    transaction.status = 'COMPLETED';
+    transaction.matchMethod = 'MANUAL';
+    transaction.matchConfidence = 1;
+    transaction.suggestedMatches = [];
+    transaction.allocations = [];
+    await transaction.save();
+
+    // 3. Allocate to the new student + ledger entries.
+    const { allocations } = await allocatePayment({
+      studentId: newStudent._id,
+      amount: transaction.amount,
+      transaction,
+    });
+    await createLedgerEntriesForAllocations({
+      allocations,
+      schoolId: transaction.school,
+      studentId: newStudent._id,
+      transactionId: transaction._id,
+      sourceLabel: transaction.source,
+      ref: transaction.transactionId,
+    });
+
+    recordAudit({
+      school: transaction.school,
+      user: req.user._id,
+      action: 'payment.reassign',
+      entityType: 'PAYMENT',
+      entityId: transaction._id,
+      description: `Reassigned payment ${transaction.transactionId} (KES ${transaction.amount}) to ${newStudent.name} (${newStudent.admissionNumber})`,
+      metadata: { amount: transaction.amount, fromStudent: previousStudentId, toStudent: newStudent._id },
+    });
+
+    const populated = await Transaction.findById(transaction._id)
+      .populate('student', 'admissionNumber name classLevel');
+    res.json({ success: true, message: 'Payment reassigned', data: populated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   mpesaValidation,
   mpesaConfirmation,
@@ -1422,4 +1549,5 @@ module.exports = {
   refundPayment,
   reallocatePayment,
   allocateUnappliedPayment,
+  reassignPayment,
 };

@@ -15,16 +15,19 @@ const MatchModal = ({ payment, onClose }) => {
   const students = studentsResp?.data || [];
   const match = useMatchPayment();
 
-  const handleSubmit = async () => {
-    if (!selectedId) { setError('Select a student first'); return; }
+  const doMatch = async (studentId) => {
+    if (!studentId) { setError('Select a student first'); return; }
     setError(null);
     try {
-      await match.mutateAsync({ transactionId: payment._id, studentId: selectedId });
+      await match.mutateAsync({ transactionId: payment._id, studentId });
       onClose();
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to match');
     }
   };
+  const handleSubmit = () => doMatch(selectedId);
+
+  const suggestions = (payment.suggestedMatches || []).filter((s) => s.student);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -42,6 +45,46 @@ const MatchModal = ({ payment, onClose }) => {
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto">
+          {/* Ranked candidates from the matching ladder — one click to resolve */}
+          {suggestions.length > 0 && (
+            <div className="mb-5">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                Suggested matches
+              </p>
+              <div className="space-y-1.5">
+                {suggestions.map((sug) => (
+                  <div
+                    key={sug.student._id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-primary/30 bg-primary/5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{sug.student.name}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-xs text-slate-500">{sug.student.admissionNumber}</span>
+                        {(sug.reasons || []).map((r, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary"
+                          >
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => doMatch(sug.student._id)}
+                      disabled={match.isPending}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-hover disabled:opacity-50"
+                    >
+                      Match
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">Or search manually:</p>
+            </div>
+          )}
+
           <input
             type="text"
             value={search}
@@ -198,10 +241,18 @@ const Suspense = () => {
                       <td className="px-4 py-3 text-sm font-mono text-slate-600">{p.reference || '-'}</td>
                       <td className="px-4 py-3 text-sm">
                         {p.suspenseType === 'UNMATCHED' ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700">
-                            <span className="material-symbols-outlined text-[16px]">help</span>
-                            Unmatched
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1 text-amber-700">
+                              <span className="material-symbols-outlined text-[16px]">help</span>
+                              Unmatched
+                            </span>
+                            {p.suggestedMatches?.length > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                                <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                                {p.suggestedMatches.length} suggestion{p.suggestedMatches.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-700">
                             {p.student?.name} <span className="text-slate-400">({p.student?.admissionNumber})</span>

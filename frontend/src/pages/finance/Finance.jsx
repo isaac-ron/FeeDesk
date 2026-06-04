@@ -3,8 +3,112 @@ import { useOutletContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/layout/PageHeader';
 import { SocketContext } from '../../context/SocketContext';
-import { useTransactions, useRecordCashPayment, useRecordBankPayment } from '../../hooks/useTransactions';
-import { useStudentByAdmission } from '../../hooks/useStudents';
+import { useTransactions, useRecordCashPayment, useRecordBankPayment, useReassignPayment } from '../../hooks/useTransactions';
+import { useStudentByAdmission, useStudents } from '../../hooks/useStudents';
+
+const formatKES = (n) => `KES ${new Intl.NumberFormat('en-KE').format(Number(n || 0))}`;
+
+// Reassign a wrongly-matched payment to the correct student. Mirrors the
+// suspense match picker; calls POST /payments/:id/reassign which unwinds the
+// old allocation and re-allocates to the chosen student.
+const ReassignModal = ({ payment, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState(null);
+  const [error, setError] = useState(null);
+  const { data: studentsResp } = useStudents(search ? { search } : {});
+  const students = studentsResp?.data || [];
+  const reassign = useReassignPayment();
+
+  const doReassign = async () => {
+    if (!selectedId) { setError('Select the correct student first'); return; }
+    setError(null);
+    try {
+      await reassign.mutateAsync({ transactionId: payment._id, studentId: selectedId });
+      onClose();
+    } catch (e) {
+      setError(e.response?.data?.message || 'Failed to reassign');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full max-h-[85vh] flex flex-col">
+        <div className="p-6 border-b border-slate-200 flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Reassign payment</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              {formatKES(payment.amount)} · {payment.transactionId} — currently assigned to{' '}
+              <span className="font-semibold text-slate-700">
+                {payment.student?.name || 'Unknown'}{payment.student?.admissionNumber ? ` (${payment.student.admissionNumber})` : ''}
+              </span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="p-6 flex-1 overflow-y-auto">
+          <div className="mb-3 flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+            <span className="material-symbols-outlined text-[18px]">info</span>
+            This reverses the current allocation and re-applies the payment to the student you pick.
+          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search the correct student by name or admission number..."
+            className="block w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-primary/30"
+            autoFocus
+          />
+          <div className="mt-4 space-y-1 max-h-64 overflow-y-auto">
+            {students.length === 0 && search && (
+              <p className="text-sm text-slate-500 px-3 py-4">No students match &quot;{search}&quot;</p>
+            )}
+            {students
+              .filter((s) => s._id !== payment.student?._id)
+              .slice(0, 20)
+              .map((s) => (
+                <button
+                  key={s._id}
+                  onClick={() => setSelectedId(s._id)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${
+                    selectedId === s._id ? 'bg-primary/5 border-primary text-primary' : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-semibold">{s.name}</p>
+                      <p className="text-xs text-slate-500">{s.admissionNumber} • {s.classLevel || 'No class'}</p>
+                    </div>
+                    <span className={`text-xs font-bold ${s.currentBalance < 0 ? 'text-red-600' : 'text-slate-500'}`}>
+                      {s.currentBalance < 0 ? `${formatKES(Math.abs(s.currentBalance))} owed` : 'Paid up'}
+                    </span>
+                  </div>
+                </button>
+              ))}
+          </div>
+          {error && (
+            <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button
+            onClick={doReassign}
+            disabled={!selectedId || reassign.isPending}
+            className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary-hover disabled:opacity-50"
+          >
+            {reassign.isPending ? 'Reassigning...' : 'Reassign & re-allocate'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SOURCE_ICONS = {
   MPESA: { icon: 'phone_iphone', color: 'text-green-600 bg-green-50' },
@@ -34,6 +138,7 @@ const Finance = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM);
   const [paymentError, setPaymentError] = useState(null);
+  const [reassignTarget, setReassignTarget] = useState(null);
 
   // Debounced admission lookup
   const [debouncedAdm, setDebouncedAdm] = useState('');
@@ -291,7 +396,7 @@ const Finance = () => {
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Date</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Allocations</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Receipt</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-text-muted uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-border">
@@ -350,16 +455,28 @@ const Finance = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {txn.type === 'CREDIT' && txn.status !== 'REVERSED' ? (
-                              <a
-                                href={`/receipts/${txn._id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 transition-colors"
-                                title="View and print receipt"
-                              >
-                                <span className="material-symbols-outlined text-[16px]">print</span>
-                                Print
-                              </a>
+                              <div className="flex items-center gap-1">
+                                <a
+                                  href={`/receipts/${txn._id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 transition-colors"
+                                  title="View and print receipt"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">print</span>
+                                  Print
+                                </a>
+                                {txn.student && (
+                                  <button
+                                    onClick={() => setReassignTarget(txn)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-orange-600 hover:bg-orange-50 transition-colors"
+                                    title="Reassign to a different student"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
+                                    Reassign
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs text-text-muted/60">—</span>
                             )}
@@ -373,6 +490,11 @@ const Finance = () => {
             )}
           </div>
       </div>
+
+      {/* Reassign Modal */}
+      {reassignTarget && (
+        <ReassignModal payment={reassignTarget} onClose={() => setReassignTarget(null)} />
+      )}
 
       {/* Record Payment Modal */}
       {showPaymentModal && (

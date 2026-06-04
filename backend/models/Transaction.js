@@ -61,6 +61,26 @@ const transactionSchema = new mongoose.Schema({
     type: Object, // Stores the raw payload from Daraja/Bank API for audit trails
     default: {}
   },
+  // How this payment was matched to its student (audit + future tuning).
+  matchMethod: {
+    type: String,
+    enum: ['ALIAS', 'EXACT_REF', 'NORMALIZED_REF', 'PHONE', 'MANUAL', 'NONE'],
+    default: 'NONE'
+  },
+  matchConfidence: {
+    type: Number,
+    default: 0
+  },
+  // Ranked candidate students for a suspense (unmatched) payment, produced by
+  // the matching ladder so the bursar can resolve it in one click.
+  suggestedMatches: {
+    type: [{
+      student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student' },
+      score: { type: Number, default: 0 },
+      reasons: { type: [String], default: [] }
+    }],
+    default: []
+  },
   // How this payment was split across the student's fee-line ledger rows.
   // Populated by the auto-allocation step after a payment is confirmed.
   // Sum of allocations[].amount should equal `amount` for fully-allocated

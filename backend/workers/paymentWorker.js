@@ -6,6 +6,7 @@ const School = require('../models/School');
 const LedgerEntry = require('../models/LedgerEntry');
 const StudentFee = require('../models/StudentFee');
 const { allocatePayment } = require('../services/paymentAllocationService');
+const { findStudentMatches } = require('../services/matchingService');
 const { getSmsQueue } = require('../queues');
 
 // PaymentWorker — processes every inbound payment callback asynchronously.
@@ -50,13 +51,32 @@ const processPayment = async (job) => {
     console.warn(`[PaymentWorker] No school resolved for ${ref} — saving as orphan`);
   }
 
-  // 3. Match student by admission number within the school
+  // 3. Match student via the matching ladder (exact ref → normalized ref →
+  //    payer phone). Auto-matches only when unambiguous; otherwise returns
+  //    ranked candidates for the bursar to resolve from the suspense screen.
   let student = null;
+  let matchMethod = 'NONE';
+  let matchConfidence = 0;
+  let suggestedMatches = [];
   if (school && accountRef) {
-    student = await Student.findOne({
-      school: school._id,
-      admissionNumber: accountRef,
+    const m = await findStudentMatches({
+      school,
+      accountRef,
+      payerPhone: phone,
+      payerName: paidBy,
+      prefix: school.admissionPrefix,
     });
+    if (m.autoMatch) {
+      student = m.autoMatch;
+      matchMethod = m.method;
+      matchConfidence = m.confidence;
+    } else {
+      suggestedMatches = m.candidates.map((c) => ({
+        student: c.student._id,
+        score: c.score,
+        reasons: c.reasons,
+      }));
+    }
   }
 
   // 4. Create Transaction record
@@ -71,6 +91,9 @@ const processPayment = async (job) => {
     reference: accountRef,
     paidBy: paidBy || 'Unknown',
     phoneNumber: phone || null,
+    matchMethod,
+    matchConfidence,
+    suggestedMatches,
     metadata: { provider, rawPayload, processedAt: new Date() },
   });
 

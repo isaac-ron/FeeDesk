@@ -120,6 +120,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/mobile', paymentRoutes); // M-PESA specific endpoints (validation, confirmation, register)
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/statements', require('./routes/statementRoutes'));
 app.use('/api/schools', schoolRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/staff', staffRoutes);

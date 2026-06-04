@@ -36,3 +36,17 @@ export const useRecordBankPayment = () => {
     },
   });
 };
+
+export const useReassignPayment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ transactionId, studentId }) =>
+      transactionService.reassignPayment({ transactionId, studentId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [TXN_KEY] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['student-ledger'] });
+    },
+  });
+};
