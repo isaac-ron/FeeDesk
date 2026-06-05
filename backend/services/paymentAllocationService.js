@@ -1,5 +1,6 @@
 const StudentFee = require('../models/StudentFee');
 const { recomputeStudentBalance } = require('./balanceService');
+const { acquireLock } = require('./lockService');
 
 // Round to 2 decimal places (cents). All money math is rounded at each step so
 // floating-point drift can't (a) leave a row a fraction short of its charge —
@@ -13,13 +14,29 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // allocations array to be stored on the Transaction.
 //
 // Any remainder after all rows are fully paid is returned as `unallocated` so
-// callers can decide what to do with overpayments (today we just log it).
+// callers can decide what to do with overpayments (persisted on the txn).
+//
+// CONCURRENCY: the read-modify-write of StudentFee.amountPaid races when two
+// payments for the SAME student are allocated at once (worker concurrency=5,
+// and the web process). We serialize per student with an advisory lock so the
+// second allocation sees the first's writes instead of clobbering them. The
+// lock no-ops when Mongo is disconnected (unit tests) — see lockService.
 const allocatePayment = async ({ studentId, amount, transaction }) => {
   const amt = round2(amount);
   if (!studentId || !amt || amt <= 0) {
     return { allocations: [], unallocated: amt || 0 };
   }
 
+  const release = await acquireLock(`alloc:${studentId}`);
+  try {
+    return await allocateLocked({ studentId, amt, transaction });
+  } finally {
+    await release();
+  }
+};
+
+// The actual allocation, run while holding the per-student lock.
+const allocateLocked = async ({ studentId, amt, transaction }) => {
   const rows = await StudentFee.find({
     student: studentId,
     status: { $in: ['UNPAID', 'PARTIAL'] },

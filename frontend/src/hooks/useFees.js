@@ -26,6 +26,20 @@ export const useUpdateFeeStructure = () => {
   });
 };
 
+// Set (or clear) the pro-rata category shares on a structure. Pass either
+// `categories` (array of { name, percent }) or `csv` (raw text); an empty
+// `categories: []` clears them.
+export const useSetFeeCategories = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, categories, csv }) =>
+      api
+        .put(`/fee-structures/${id}/categories`, csv != null ? { csv } : { categories })
+        .then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [FEE_STRUCTURES_KEY] }),
+  });
+};
+
 export const usePublishFeeStructure = () => {
   const qc = useQueryClient();
   return useMutation({

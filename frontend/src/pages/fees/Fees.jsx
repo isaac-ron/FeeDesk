@@ -8,11 +8,186 @@ import {
   useUpdateFeeStructure,
   usePublishFeeStructure,
   useDeleteFeeStructure,
+  useSetFeeCategories,
 } from '../../hooks/useFees';
 
 const CLASS_LEVELS = ['ALL', 'Grade 10', 'Grade 11', 'Grade 12'];
 
 const formatKES = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
+
+const blankCatRow = () => ({ name: '', percent: '' });
+
+// Pro-rata category editor: percentage shares of the structure's flat amount
+// (must total 100%). Edit rows directly or paste/upload a `category,percent`
+// CSV. Presentation-only — it never changes the charged amount or any payment.
+const CategoryModal = ({ structure, onClose }) => {
+  const setCategories = useSetFeeCategories();
+  const [rows, setRows] = useState(
+    structure.categories?.length
+      ? structure.categories.map((c) => ({ name: c.name, percent: String(c.percent) }))
+      : [blankCatRow()]
+  );
+  const [csvText, setCsvText] = useState('');
+  const [error, setError] = useState(null);
+
+  const total = rows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
+  const totalOk = Math.abs(total - 100) < 0.01;
+  const allNamed = rows.every((r) => r.name.trim() && r.percent !== '');
+
+  const updateRow = (i, patch) => setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows([...rows, blankCatRow()]);
+  const removeRow = (i) => setRows(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : [blankCatRow()]);
+
+  const loadCsv = () => {
+    setError(null);
+    try {
+      const parsed = [];
+      for (const line of csvText.split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t) continue;
+        const idx = t.indexOf(',');
+        if (idx === -1) throw new Error(`Row needs "category,percent": ${t}`);
+        const name = t.slice(0, idx).trim().replace(/^"|"$/g, '');
+        const pct = Number(t.slice(idx + 1).replace('%', '').trim());
+        if (!Number.isFinite(pct)) {
+          if (parsed.length === 0) continue; // tolerate a header
+          throw new Error(`Bad percent on row: ${t}`);
+        }
+        parsed.push({ name, percent: String(pct) });
+      }
+      if (!parsed.length) throw new Error('No category rows found in CSV');
+      setRows(parsed);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setCsvText(String(reader.result || ''));
+    reader.readAsText(file);
+  };
+
+  const save = async () => {
+    setError(null);
+    try {
+      const categories = rows.map((r) => ({ name: r.name.trim(), percent: Number(r.percent) }));
+      await setCategories.mutateAsync({ id: structure._id, categories });
+      onClose();
+    } catch (e) {
+      setError(e.response?.data?.message || e.message || 'Failed to save');
+    }
+  };
+
+  const clear = async () => {
+    setError(null);
+    try {
+      await setCategories.mutateAsync({ id: structure._id, categories: [] });
+      onClose();
+    } catch (e) {
+      setError(e.response?.data?.message || e.message || 'Failed to clear');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border">
+          <div>
+            <h3 className="text-lg font-bold text-text-main font-display">Fee categories</h3>
+            <p className="text-xs text-text-muted">{structure.classLevel} · {formatKES(structure.amount)} — split into percentage shares (must total 100%)</p>
+          </div>
+          <button type="button" onClick={onClose} className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto">
+          {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
+
+          <div className="space-y-2">
+            {rows.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={r.name}
+                  onChange={(e) => updateRow(i, { name: e.target.value })}
+                  placeholder="Category (e.g. Tuition)"
+                  className="flex-1 px-3 py-2 border border-surface-border rounded-lg text-sm"
+                />
+                <div className="relative w-24">
+                  <input
+                    type="number" min="0" max="100" step="0.01"
+                    value={r.percent}
+                    onChange={(e) => updateRow(i, { percent: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2 pr-7 border border-surface-border rounded-lg text-sm text-right"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-sm">%</span>
+                </div>
+                <span className="w-24 text-right text-xs text-text-muted">{formatKES(((Number(r.percent) || 0) / 100) * structure.amount)}</span>
+                <button type="button" onClick={() => removeRow(i)} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-text-muted">
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={addRow} className="text-sm font-semibold text-primary hover:underline flex items-center gap-1">
+              <span className="material-symbols-outlined text-[18px]">add</span> Add category
+            </button>
+          </div>
+
+          <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold ${totalOk ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+            <span>Total</span>
+            <span>{total.toFixed(2)}% {totalOk ? '✓' : '— must be 100%'}</span>
+          </div>
+
+          <details className="text-sm">
+            <summary className="cursor-pointer text-text-muted font-semibold select-none">Paste / upload CSV</summary>
+            <div className="mt-2 space-y-2">
+              <textarea
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                rows={4}
+                placeholder={'category,percent\nTuition,60\nBoarding,30\nActivity,10'}
+                className="w-full px-3 py-2 border border-surface-border rounded-lg text-xs font-mono"
+              />
+              <div className="flex items-center gap-4">
+                <button type="button" onClick={loadCsv} className="text-sm font-semibold text-primary hover:underline">Load into rows</button>
+                <label className="text-sm font-semibold text-text-muted hover:text-primary cursor-pointer">
+                  Upload .csv
+                  <input type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
+                </label>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-surface-border">
+          <button
+            type="button"
+            onClick={clear}
+            disabled={setCategories.isPending || !structure.categories?.length}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+          >
+            Clear
+          </button>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg border border-surface-border text-sm font-medium">Cancel</button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={setCategories.isPending || !totalOk || !allNamed}
+              className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-bold disabled:opacity-60"
+            >
+              {setCategories.isPending ? 'Saving…' : 'Save categories'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Fees = () => {
   const { openSidebar } = useOutletContext() || {};
@@ -24,6 +199,7 @@ const Fees = () => {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ term: '', classLevel: 'ALL', amount: '', label: 'Term fees' });
   const [formError, setFormError] = useState(null);
+  const [catStructure, setCatStructure] = useState(null);
 
   const realTerms = (terms || []).filter((t) => t._id !== 'fallback');
 
@@ -185,13 +361,22 @@ const Fees = () => {
                     <td className="px-6 py-3 text-sm text-text-muted">
                       {s.term?.name || '—'} <span className="text-text-muted/70">· {s.term?.academicYear || ''}</span>
                     </td>
-                    <td className="px-6 py-3 text-sm text-text-muted">{s.label || 'Term fees'}</td>
+                    <td className="px-6 py-3 text-sm text-text-muted">
+                      {s.label || 'Term fees'}
+                      {s.categories?.length > 0 && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold">{s.categories.length} cat.</span>
+                      )}
+                    </td>
                     <td className="px-6 py-3 text-sm font-bold text-primary font-display text-right">{formatKES(s.amount)}</td>
                     <td className="px-6 py-3">{statusBadge(s.status)}</td>
                     <td className="px-6 py-3 text-sm text-text-muted">{s.studentsInvoiced || 0}</td>
                     <td className="px-6 py-3 text-right space-x-2">
                       {s.status !== 'ARCHIVED' && (
-                        <button onClick={() => openEdit(s)} className="text-sm font-semibold text-primary hover:underline">Edit</button>
+                        <>
+                          <button onClick={() => openEdit(s)} className="text-sm font-semibold text-primary hover:underline">Edit</button>
+                          <span className="text-slate-300">·</span>
+                          <button onClick={() => setCatStructure(s)} className="text-sm font-semibold text-primary hover:underline">Categories</button>
+                        </>
                       )}
                       {s.status === 'DRAFT' && (
                         <>
@@ -287,6 +472,10 @@ const Fees = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {catStructure && (
+        <CategoryModal structure={catStructure} onClose={() => setCatStructure(null)} />
       )}
     </>
   );

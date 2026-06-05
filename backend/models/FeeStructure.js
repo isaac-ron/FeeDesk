@@ -39,6 +39,18 @@ const feeStructureSchema = new mongoose.Schema({
     required: true,
     min: [0, 'Fee amount cannot be negative']
   },
+  // Optional pro-rata category breakdown (presentation-layer only): fixed
+  // percentage shares of `amount` that sum to 100. These do NOT change what a
+  // student is charged or how payments allocate — statements DERIVE a
+  // per-category paid/outstanding split from these shares at view time.
+  // See services/feeCategoryService.js.
+  categories: {
+    type: [{
+      name: { type: String, required: true, trim: true },
+      percent: { type: Number, required: true, min: 0, max: 100 },
+    }],
+    default: []
+  },
   status: {
     type: String,
     enum: ['DRAFT', 'PUBLISHED', 'ARCHIVED'],

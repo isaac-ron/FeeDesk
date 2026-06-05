@@ -1,4 +1,4 @@
-import { useState, useMemo, useContext } from 'react';
+import { useState, useMemo, useContext, Fragment } from 'react';
 import { Link, useParams, useOutletContext } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import { TermContext } from '../../context/TermContext';
@@ -111,19 +111,40 @@ const StudentLedger = () => {
                   <tbody>
                     {fees.map(f => {
                       const outstanding = Math.max(0, (f.amountCharged || 0) - (f.amountPaid || 0));
+                      const breakdown = f.categoryBreakdown || [];
                       return (
-                        <tr key={f._id} className="border-b border-surface-border last:border-0">
-                          <td className="px-6 py-3">
-                            <p className="font-semibold text-text-main text-sm">{f.name}</p>
-                            <p className="text-xs text-text-muted">{f.type}</p>
-                          </td>
-                          <td className="px-6 py-3 text-sm text-text-muted">{f.term?.name || '—'}</td>
-                          <td className="px-6 py-3 text-sm text-text-muted">{formatDate(f.dueDate)}</td>
-                          <td className="px-6 py-3 text-right text-sm font-semibold">{formatKES(f.amountCharged)}</td>
-                          <td className="px-6 py-3 text-right text-sm text-emerald-600 font-semibold">{formatKES(f.amountPaid)}</td>
-                          <td className="px-6 py-3 text-right text-sm font-bold text-text-main">{formatKES(outstanding)}</td>
-                          <td className="px-6 py-3">{statusPill(f.status)}</td>
-                        </tr>
+                        <Fragment key={f._id}>
+                          <tr className={breakdown.length ? '' : 'border-b border-surface-border last:border-0'}>
+                            <td className="px-6 py-3">
+                              <p className="font-semibold text-text-main text-sm">{f.name}</p>
+                              <p className="text-xs text-text-muted">{f.type}</p>
+                            </td>
+                            <td className="px-6 py-3 text-sm text-text-muted">{f.term?.name || '—'}</td>
+                            <td className="px-6 py-3 text-sm text-text-muted">{formatDate(f.dueDate)}</td>
+                            <td className="px-6 py-3 text-right text-sm font-semibold">{formatKES(f.amountCharged)}</td>
+                            <td className="px-6 py-3 text-right text-sm text-emerald-600 font-semibold">{formatKES(f.amountPaid)}</td>
+                            <td className="px-6 py-3 text-right text-sm font-bold text-text-main">{formatKES(outstanding)}</td>
+                            <td className="px-6 py-3">{statusPill(f.status)}</td>
+                          </tr>
+                          {breakdown.map((c, idx) => (
+                            <tr
+                              key={`${f._id}-cat-${idx}`}
+                              className={`bg-slate-50/50 ${idx === breakdown.length - 1 ? 'border-b border-surface-border' : ''}`}
+                            >
+                              <td className="px-6 py-1.5 pl-10">
+                                <span className="text-xs text-text-muted">
+                                  ↳ {c.name} <span className="text-text-muted/60">({c.percent}%)</span>
+                                </span>
+                              </td>
+                              <td></td>
+                              <td></td>
+                              <td className="px-6 py-1.5 text-right text-xs text-text-muted">{formatKES(c.charged)}</td>
+                              <td className="px-6 py-1.5 text-right text-xs text-emerald-600/80">{formatKES(c.paid)}</td>
+                              <td className="px-6 py-1.5 text-right text-xs text-text-muted">{formatKES(c.outstanding)}</td>
+                              <td></td>
+                            </tr>
+                          ))}
+                        </Fragment>
                       );
                     })}
                   </tbody>

@@ -5,6 +5,7 @@ const Term = require('../models/Term');
 const LedgerEntry = require('../models/LedgerEntry');
 const { recomputeManyStudentBalances } = require('../services/balanceService');
 const { recordAudit } = require('../services/auditService');
+const { parseCategoryCsv, validateCategories } = require('../services/feeCategoryService');
 
 const schoolFilter = (req) => {
   if (req.user.role === 'super_admin') return {};
@@ -221,6 +222,62 @@ const publishStructure = async (req, res) => {
   }
 };
 
+// PUT /api/fee-structures/:id/categories
+// Body: { categories: [{ name, percent }] }  OR  { csv: "category,percent\n..." }
+// Presentation-only: sets the pro-rata category shares. Safe on DRAFT or
+// PUBLISHED (it never changes the charged amount or any payment); blocked on
+// ARCHIVED. Pass an empty `categories` array to clear them.
+const setStructureCategories = async (req, res) => {
+  try {
+    const structure = await FeeStructure.findById(req.params.id);
+    const check = ensureOwnership(req, structure);
+    if (!check.ok) return res.status(check.status).json({ success: false, message: check.message });
+    if (structure.status === 'ARCHIVED') {
+      return res.status(400).json({ success: false, message: 'Cannot edit an archived structure' });
+    }
+
+    // Allow an explicit clear.
+    if (Array.isArray(req.body?.categories) && req.body.categories.length === 0) {
+      structure.categories = [];
+      await structure.save();
+      return res.json({ success: true, data: structure });
+    }
+
+    let categories;
+    if (typeof req.body?.csv === 'string') {
+      categories = parseCategoryCsv(req.body.csv);
+    } else if (Array.isArray(req.body?.categories)) {
+      categories = req.body.categories;
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide `categories` (array) or `csv` (text)' });
+    }
+
+    let normalized;
+    try {
+      normalized = validateCategories(categories);
+    } catch (e) {
+      return res.status(400).json({ success: false, message: e.message });
+    }
+
+    structure.categories = normalized;
+    await structure.save();
+
+    recordAudit({
+      school: structure.school,
+      user: req.user._id,
+      action: 'fee_structure.set_categories',
+      entityType: 'FEE_STRUCTURE',
+      entityId: structure._id,
+      description: `Set ${normalized.length} pro-rata categor${normalized.length === 1 ? 'y' : 'ies'} on "${structure.label || 'Term fees'}"`,
+      metadata: { categories: normalized },
+    });
+
+    res.json({ success: true, data: structure });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 const deleteStructure = async (req, res) => {
   try {
     const structure = await FeeStructure.findById(req.params.id);
@@ -242,5 +299,6 @@ module.exports = {
   createStructure,
   updateStructure,
   publishStructure,
+  setStructureCategories,
   deleteStructure,
 };

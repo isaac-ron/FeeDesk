@@ -1,6 +1,7 @@
 const StudentFee = require('../models/StudentFee');
 const Student = require('../models/Student');
 const Transaction = require('../models/Transaction');
+const { deriveCategoryBreakdown } = require('../services/feeCategoryService');
 
 const schoolFilter = (req) => {
   if (req.user.role === 'super_admin') return {};
@@ -41,6 +42,7 @@ const getStudentLedger = async (req, res) => {
     if (term) feeQuery.term = term;
     const fees = await StudentFee.find(feeQuery)
       .populate('term', 'name academicYear termNumber status')
+      .populate('feeStructure', 'categories label amount')
       .sort({ createdAt: 1 });
 
     const totals = fees.reduce(
@@ -52,6 +54,18 @@ const getStudentLedger = async (req, res) => {
       { charged: 0, paid: 0 }
     );
     totals.outstanding = Math.max(0, totals.charged - totals.paid);
+
+    // Pro-rata presentation: when the row's structure defines category shares,
+    // derive a per-category paid/outstanding split from this row's flat amounts.
+    // Empty array when there are no categories (UI falls back to the flat line).
+    const feesWithBreakdown = fees.map((f) => {
+      const obj = f.toObject({ virtuals: true });
+      const cats = f.feeStructure && f.feeStructure.categories;
+      obj.categoryBreakdown = (cats && cats.length)
+        ? deriveCategoryBreakdown(cats, f.amountCharged || 0, f.amountPaid || 0)
+        : [];
+      return obj;
+    });
 
     const feeIds = fees.map(f => f._id);
     const payments = await Transaction.find({
@@ -65,7 +79,7 @@ const getStudentLedger = async (req, res) => {
       success: true,
       data: {
         student,
-        fees,
+        fees: feesWithBreakdown,
         totals,
         payments,
       },
