@@ -87,7 +87,12 @@ const processPayment = async (job) => {
     amount: parseFloat(amount),
     source: provider === 'MPESA' ? 'MPESA' : 'BANK_TRANSFER',
     type: 'CREDIT',
-    status: student ? 'COMPLETED' : 'PENDING',
+    // Always PENDING at creation. A matched payment is flipped to COMPLETED
+    // only after its allocation + ledger writes actually persist (see below).
+    // This way, if the worker crashes mid-allocation, the retry's idempotency
+    // check finds a visible PENDING record to review — not a deceptive
+    // COMPLETED-but-unapplied one that silently leaves the student still owing.
+    status: 'PENDING',
     reference: accountRef,
     paidBy: paidBy || 'Unknown',
     phoneNumber: phone || null,
@@ -102,11 +107,14 @@ const processPayment = async (job) => {
     const oldBalance = student.currentBalance;
 
     // Allocate payment across outstanding fee lines
-    const { allocations } = await allocatePayment({
+    const { allocations, unallocated } = await allocatePayment({
       studentId: student._id,
       amount: parseFloat(amount),
       transaction: newTransaction,
     });
+    if (unallocated > 0) {
+      console.log(`[PaymentWorker] Overpayment on ${ref}: KES ${unallocated} held as credit (unallocatedAmount)`);
+    }
 
     // Create ledger entries for each allocation
     for (const alloc of allocations) {
@@ -134,6 +142,10 @@ const processPayment = async (job) => {
     const newBalance = refreshed.currentBalance;
 
     console.log(`[PaymentWorker] Allocated for ${student.name}: ${oldBalance} → ${newBalance}`);
+
+    // Allocation + ledger have now persisted — safe to mark the payment done.
+    newTransaction.status = 'COMPLETED';
+    await newTransaction.save();
 
     // Emit real-time event
     if (io) {

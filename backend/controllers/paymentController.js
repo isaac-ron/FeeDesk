@@ -804,8 +804,10 @@ const bankWebhookHandler = async (req, res) => {
     // 2. Identify school (lightweight read — needed for auth validation)
     let accountIdentifier;
     if (provider === 'EQUITY') {
-      // Jenga IPN nests the school account under transaction.billNumber.
-      accountIdentifier = req.body?.transaction?.billNumber;
+      // Jenga IPN carries the school account as transaction.billNumber (with
+      // bank.account as a fallback). The PAYER's reference (admission number)
+      // is customer.reference and is handled downstream, not here.
+      accountIdentifier = req.body?.transaction?.billNumber || req.body?.bank?.account;
     } else if (provider === 'KCB') {
       accountIdentifier = req.body.creditAccountIdentifier || req.body.accountNumber;
     } else if (provider === 'COOP') {

@@ -38,6 +38,11 @@ const required = (name) => {
   const password = required('JENGA_PASSWORD');
   const publicKeyFile = required('JENGA_PUBLIC_KEY_FILE');
   const publicKey = fs.readFileSync(publicKeyFile, 'utf8').trim();
+  // IPN Basic Auth — the username/password configured for the IPN in the
+  // JengaHQ portal. Without these, validateWebhook can't authenticate inbound
+  // IPNs and (with BANK_WEBHOOK_SIGNATURE_REQUIRED=true) they'd be rejected.
+  const webhookUsername = process.env.JENGA_WEBHOOK_USERNAME || '';
+  const webhookPassword = process.env.JENGA_WEBHOOK_PASSWORD || '';
   const apply = process.env.APPLY === 'true';
 
   await mongoose.connect(mongoUri);
@@ -74,6 +79,8 @@ const required = (name) => {
     console.log(`   credentials.username      = ${username}`);
     console.log(`   credentials.password      = (${password.length} chars)`);
     console.log(`   credentials.publicKey     = (PEM, ${publicKey.length} chars)`);
+    console.log(`   credentials.webhookUsername = ${webhookUsername || '(not set)'}`);
+    console.log(`   credentials.webhookPassword = ${webhookPassword ? `(${webhookPassword.length} chars)` : '(not set)'}`);
     await mongoose.disconnect();
     return;
   }
@@ -88,6 +95,10 @@ const required = (name) => {
       username,
       password,
       publicKey,
+      // Only overwrite IPN Basic-Auth creds when provided, so re-running the
+      // script without them doesn't wipe an existing configuration.
+      ...(webhookUsername ? { webhookUsername } : {}),
+      ...(webhookPassword ? { webhookPassword } : {}),
     },
     lastSync: school.bankIntegration?.lastSync,
   };
@@ -103,6 +114,7 @@ const required = (name) => {
   console.log(`   account:  ${reloaded.bankIntegration.credentials.accountNumber}`);
   console.log(`   username: ${reloaded.bankIntegration.credentials.username}`);
   console.log(`   publicKey length: ${reloaded.bankIntegration.credentials.publicKey?.length || 0}`);
+  console.log(`   webhookUsername: ${reloaded.bankIntegration.credentials.webhookUsername || '(not set)'}`);
 
   await mongoose.disconnect();
 })().catch(async (err) => {

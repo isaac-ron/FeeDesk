@@ -50,3 +50,6 @@ frontend/schoolpay-enterprise/
 backend/scratch/
 scratch/
 
+#PEM
+.pem
+jenga-private-key.pem

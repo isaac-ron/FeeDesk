@@ -95,6 +95,16 @@ const transactionSchema = new mongoose.Schema({
       amount: { type: Number, required: true, min: 0 }
     }],
     default: []
+  },
+  // Overpayment remainder: amount paid beyond every outstanding fee line at
+  // allocation time. Persisted (rather than silently dropped) so the excess
+  // stays on the books as auditable credit for this payment. A future pass
+  // aggregates this into a spendable student credit + auto-applies it to new
+  // charges; for now it is captured per-transaction.
+  unallocatedAmount: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 }, {
   timestamps: true

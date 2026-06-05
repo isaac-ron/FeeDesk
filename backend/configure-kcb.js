@@ -4,18 +4,19 @@
  * Sensitive values come from env vars — nothing is committed to disk.
  *
  * Usage (PowerShell):
- *   $env:MONGO_URI='...'
- *   $env:SCHOOL_QUERY='Kenya High School'
- *   $env:KCB_ACCOUNT_NUMBER='1100194977404'
- *   $env:KCB_ORGANIZATION_CODE=''
- *   $env:KCB_CONSUMER_KEY='...'
- *   $env:KCB_CONSUMER_SECRET='...'
- *   $env:KCB_PUBLIC_KEY_FILE='C:\path\to\kcb_pub.pem'   # optional
+ *   $env:MONGO_URI='mongodb+srv://<user>:<password>@<cluster>.mongodb.net/<dbname>'
+ *   $env:SCHOOL_QUERY='KHS'                 # School.code (exact) or name fragment
+ *   $env:KCB_ACCOUNT_NUMBER='<account-no>'
+ *   $env:KCB_ORGANIZATION_CODE='<org-code>'
+ *   $env:KCB_CONSUMER_KEY='<kcb-consumer-key>'
+ *   $env:KCB_CONSUMER_SECRET='<kcb-consumer-secret>'
  *   $env:APPLY='true'
  *   node backend/configure-kcb.js
  *
  * SCHOOL_QUERY matches School.name (case-insensitive partial) OR School.code
  * (exact, uppercased). Dry-runs unless APPLY=true.
+ * NOTE: MONGO_URI MUST include the database name (the prod DB is "schoolpay");
+ * a trailing "/" with no db name silently connects to the empty "test" DB.
  *
  * After saving, KCB IPN lands on:
  *   POST {API_BASE_URL}/api/payments/bank/webhook/kcb
@@ -49,7 +50,17 @@ const required = (name) => {
   const apply = process.env.APPLY === 'true';
 
   await mongoose.connect(mongoUri);
-  console.log('[configure-kcb] Connected to Mongo');
+  console.log(
+    `[configure-kcb] Connected — db="${mongoose.connection.name}" host=${mongoose.connection.host}`
+  );
+  const schoolCount = await School.countDocuments();
+  console.log(`[configure-kcb] Schools in this DB: ${schoolCount}`);
+  if (mongoose.connection.name === 'test') {
+    console.warn(
+      '[configure-kcb] ⚠ Connected to the default "test" database — your MONGO_URI is missing a' +
+        ' database name. Append the real DB name to the URI (e.g. ...mongodb.net/schoolpay-enterprise).'
+    );
+  }
 
   const query = {
     $or: [
@@ -61,6 +72,13 @@ const required = (name) => {
 
   if (matches.length === 0) {
     console.error(`[configure-kcb] No school matched "${schoolQuery}"`);
+    const all = await School.find({}).select('name code').lean();
+    if (all.length) {
+      console.error('[configure-kcb] Schools available in this DB:');
+      all.forEach((s) => console.error(`   • ${s.code} = ${s.name}`));
+    } else {
+      console.error('[configure-kcb] (No schools at all in this DB — wrong database / wrong URI.)');
+    }
     process.exit(2);
   }
   if (matches.length > 1) {

@@ -121,3 +121,27 @@ test('writes the allocations array onto the transaction', async () => {
   await allocatePayment({ studentId: 's1', amount: 1000, transaction: txn });
   assert.deepEqual(txn.allocations, [{ studentFee: 'a', amount: 1000 }]);
 });
+
+test('persists the overpayment remainder on transaction.unallocatedAmount (not dropped)', async () => {
+  currentRows = [makeRow('a', 500), makeRow('b', 500, 0, { createdAt: 2 })];
+  const txn = fakeTxn();
+  const { unallocated } = await allocatePayment({ studentId: 's1', amount: 1200, transaction: txn });
+  assert.equal(unallocated, 200);
+  assert.equal(txn.unallocatedAmount, 200); // captured as credit, not silently lost
+});
+
+test('clears transaction.unallocatedAmount to 0 when fully allocated', async () => {
+  currentRows = [makeRow('a', 1000)];
+  const txn = fakeTxn();
+  await allocatePayment({ studentId: 's1', amount: 1000, transaction: txn });
+  assert.equal(txn.unallocatedAmount, 0);
+});
+
+test('records full amount as unallocated when the student has no outstanding rows', async () => {
+  currentRows = []; // nothing owed → entire payment is overpayment/credit
+  const txn = fakeTxn();
+  const { allocations, unallocated } = await allocatePayment({ studentId: 's1', amount: 750, transaction: txn });
+  assert.deepEqual(allocations, []);
+  assert.equal(unallocated, 750);
+  assert.equal(txn.unallocatedAmount, 750);
+});

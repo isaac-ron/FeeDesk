@@ -40,14 +40,19 @@ const allocatePayment = async ({ studentId, amount, transaction }) => {
     remaining = round2(remaining - applied);
   }
 
+  const unallocated = round2(remaining);
   if (transaction) {
     transaction.allocations = allocations;
+    // Persist the overpayment remainder so it is never silently dropped — it
+    // stays on the books as auditable credit on this transaction. Always set
+    // (0 when fully allocated) so re-allocation flows overwrite any stale value.
+    transaction.unallocatedAmount = unallocated;
     await transaction.save();
   }
 
   await recomputeStudentBalance(studentId);
 
-  return { allocations, unallocated: round2(remaining) };
+  return { allocations, unallocated };
 };
 
 module.exports = { allocatePayment, round2 };

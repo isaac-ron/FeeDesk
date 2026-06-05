@@ -78,8 +78,11 @@ const setCachedToken = (key, token, expiresInSec) => {
  * Sandbox:     https://uat.finserve.africa
  * Production:  https://api.finserve.africa
  *
- * Auth: POST /identity-sandbox/v2/token with
- *       { username, password, grant_type: 'password' }
+ * Auth (Jenga v3): POST /authentication/api/v3/authenticate/merchant
+ *       headers: { 'Api-Key': <portal api key>, 'Content-Type': 'application/json' }
+ *       body:    { merchantCode, consumerSecret }
+ *       → { accessToken, refreshToken, expiresIn (ISO ts), tokenType: 'Bearer' }
+ *       (The old "identity v2 token" path is retired — it 404s on finserve.africa.)
  *
  * Outgoing-request signing (required for send-money, not for IPN receipt):
  *   RSA-SHA256 over concatenation of:
@@ -102,16 +105,21 @@ const setCachedToken = (key, token, expiresInSec) => {
 class EquityBankService {
   constructor() {
     this.baseUrl = process.env.EQUITY_API_URL || 'https://uat.finserve.africa';
-    // Sandbox keeps /identity-sandbox, production uses /identity
+    // Jenga v3 merchant-auth path is identical for UAT and live; only the host
+    // differs (uat.finserve.africa vs api.finserve.africa).
     this.tokenPath = process.env.EQUITY_TOKEN_PATH
-      || (this.baseUrl.includes('uat') ? '/identity-sandbox/v2/token' : '/identity/v2/token');
+      || '/authentication/api/v3/authenticate/merchant';
   }
 
   _creds(school) {
     const c = school?.bankIntegration?.credentials || {};
     return {
-      username: c.username || process.env.JENGA_USERNAME,
-      password: c.password || process.env.JENGA_PASSWORD,
+      // Jenga v3 merchant auth. Prefer the v3 names; fall back to the legacy
+      // username/password names so older configs/.env still resolve.
+      merchantCode: c.merchantCode || process.env.JENGA_MERCHANT_CODE
+        || c.username || process.env.JENGA_USERNAME,
+      consumerSecret: c.consumerSecret || process.env.JENGA_CONSUMER_SECRET
+        || c.password || process.env.JENGA_PASSWORD,
       apiKey: c.apiKey || process.env.JENGA_API_KEY,
       privateKey: c.privateKey || process.env.JENGA_PRIVATE_KEY,
       publicKey: c.publicKey || process.env.JENGA_PUBLIC_KEY,
@@ -124,11 +132,14 @@ class EquityBankService {
 
   async getAccessToken(school) {
     const creds = this._creds(school);
-    if (!creds.username || !creds.password) {
-      throw new Error('Equity Jenga credentials (username/password) not configured');
+    if (!creds.merchantCode || !creds.consumerSecret) {
+      throw new Error('Equity Jenga credentials (merchantCode/consumerSecret) not configured');
+    }
+    if (!creds.apiKey) {
+      throw new Error('Equity Jenga Api-Key not configured (required header for v3 merchant auth)');
     }
 
-    const cacheKey = `EQUITY:${creds.username}`;
+    const cacheKey = `EQUITY:${creds.merchantCode}`;
     const cached = getCachedToken(cacheKey);
     if (cached) return cached;
 
@@ -136,22 +147,30 @@ class EquityBankService {
       const response = await axios.post(
         `${this.baseUrl}${this.tokenPath}`,
         {
-          username: creds.username,
-          password: creds.password,
-          grant_type: 'password',
+          merchantCode: creds.merchantCode,
+          consumerSecret: creds.consumerSecret,
         },
         {
           headers: {
             'Content-Type': 'application/json',
-            ...(creds.apiKey ? { 'Api-Key': creds.apiKey } : {}),
+            'Api-Key': creds.apiKey,
           },
           timeout: 15000,
         }
       );
 
-      const token = response.data.access_token;
-      const expiresIn = Number(response.data.expires_in) || 3600;
-      setCachedToken(cacheKey, token, expiresIn);
+      const token = response.data.accessToken || response.data.access_token;
+      // v3 returns `expiresIn` as an absolute ISO timestamp (e.g.
+      // "2026-06-05T07:03:02Z"); convert to seconds-from-now for the cache.
+      // Tolerate a numeric seconds form too, just in case.
+      let ttlSec = 3600;
+      const exp = response.data.expiresIn ?? response.data.expires_in;
+      if (exp != null) {
+        const ms = new Date(exp).getTime() - Date.now();
+        if (Number.isFinite(ms) && ms > 60000) ttlSec = Math.floor(ms / 1000);
+        else if (Number.isFinite(Number(exp)) && Number(exp) > 0) ttlSec = Number(exp);
+      }
+      setCachedToken(cacheKey, token, ttlSec);
       console.log('✅ [EQUITY] Jenga token acquired');
       return token;
     } catch (error) {
@@ -180,7 +199,11 @@ class EquityBankService {
       transactionId: transaction.reference || bank.reference,
       amount: parseFloat(transaction.amount),
       currency: transaction.currency || 'KES',
-      reference: transaction.billNumber,
+      // ★ The admission number the PAYER entered lives in customer.reference.
+      //   transaction.billNumber is the SCHOOL's account identifier (used for
+      //   tenant routing in bankWebhookHandler) — never the student reference.
+      reference: customer.reference,
+      schoolAccount: transaction.billNumber || bank.account,
       paidBy: customer.name,
       phoneNumber: customer.mobileNumber,
       timestamp: new Date(transaction.date || Date.now()),
