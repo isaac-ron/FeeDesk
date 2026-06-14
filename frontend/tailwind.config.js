@@ -42,6 +42,9 @@ export default {
           900: "#0C1018",
           950: "#070C14",
         },
+        "fd-canvas": "#06070a",
+        "fd-ink":    "#0f1117",
+        "fd-rim":    "#1c2030",
       },
       fontFamily: {
         "display": ["Manrope", "sans-serif"],

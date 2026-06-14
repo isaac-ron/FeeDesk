@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { useReveal } from '../hooks/useReveal';
 
-// TODO: replace with the form ID from your free Formspree account (https://formspree.io)
-//       e.g. 'xayvzwjz'. Form submissions will arrive in the configured email inbox.
 const FORMSPREE_FORM_ID = 'YOUR_FORMSPREE_FORM_ID';
-
-// TODO: replace with the public-facing inbox you want listed under the form.
 const CONTACT_EMAIL = 'hello@feedesk.com';
 
 const sizeOptions = [
@@ -16,7 +12,7 @@ const sizeOptions = [
 ];
 
 const ContactForm = () => {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'submitting' | 'success' | 'error'
+  const [status, setStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleSubmit = async (e) => {
@@ -61,12 +57,10 @@ const ContactForm = () => {
     <section id="contact" className="bg-fd-gray-50 py-20 sm:py-24 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-5xl gap-12 lg:grid-cols-2 lg:gap-16">
+
           {/* Left: copy */}
           <div ref={copyRef} className={`reveal ${copyVisible ? 'reveal-visible' : ''}`}>
-            <p className="text-xs font-semibold uppercase tracking-brand text-primary">
-              Request a demo
-            </p>
-            <h2 className="mt-3 font-header text-3xl font-extrabold tracking-tighter text-fd-gray-900 sm:text-4xl lg:text-5xl">
+            <h2 className="font-header text-3xl font-extrabold tracking-tight text-fd-gray-900 text-balance sm:text-4xl lg:text-5xl">
               See FeeDesk with your school's data.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-fd-gray-600">
@@ -132,7 +126,7 @@ const ContactForm = () => {
                     name="schoolSize"
                     required
                     defaultValue=""
-                    className="block w-full appearance-none rounded-xl border border-fd-gray-300 bg-white px-4 py-3 text-base text-fd-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="block w-full appearance-none rounded-xl border border-fd-gray-300 bg-white px-4 py-3 text-base text-fd-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
                     <option value="" disabled>Select an option</option>
                     {sizeOptions.map(opt => (
@@ -150,7 +144,7 @@ const ContactForm = () => {
                 <button
                   type="submit"
                   disabled={status === 'submitting'}
-                  className="group mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-4 text-base font-bold text-white shadow-lg shadow-fd-blue-600/20 transition-all duration-200 hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="group mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-4 text-base font-bold text-white shadow-lg shadow-fd-blue-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-xl active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {status === 'submitting' ? (
                     <>
@@ -193,7 +187,7 @@ const Field = ({ label, id, name, type = 'text', required, placeholder }) => (
       type={type}
       required={required}
       placeholder={placeholder}
-      className="block w-full rounded-xl border border-fd-gray-300 bg-white px-4 py-3 text-base text-fd-gray-900 placeholder:text-fd-gray-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+      className="block w-full rounded-xl border border-fd-gray-300 bg-white px-4 py-3 text-base text-fd-gray-900 placeholder:text-fd-gray-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
     />
   </div>
 );

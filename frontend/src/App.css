@@ -105,6 +105,71 @@ html {
   html { scroll-behavior: auto; }
 }
 
+/* ==================================================================
+   Modern SaaS dark-surface utilities
+   ================================================================== */
+
+/* Subtle grid mesh for dark hero / feature sections */
+.fd-mesh {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Dark card: elevated surface with blue glow on hover */
+.fd-card-ink {
+  background: #0f1117;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 300ms ease, box-shadow 300ms ease;
+}
+.fd-card-ink:hover {
+  border-color: rgba(18, 81, 163, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(18, 81, 163, 0.1),
+    0 8px 40px rgba(18, 81, 163, 0.12);
+}
+
+/* Gradient border for the featured pricing / CTA cards.
+   Uses mask-composite to cut the center transparent — NOT gradient text. */
+.fd-gradient-border {
+  position: relative;
+  z-index: 0;
+}
+.fd-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(145deg, #2F7DE0 0%, #1251A3 50%, #5CB8FF 100%);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Animated ambient glow — slow pulse for hero radial orbs */
+@keyframes fd-glow-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.08); }
+}
+.fd-glow-pulse {
+  animation: fd-glow-pulse 8s ease-in-out infinite;
+}
+.fd-glow-pulse-alt {
+  animation: fd-glow-pulse 11s ease-in-out infinite reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-glow-pulse,
+  .fd-glow-pulse-alt {
+    animation: none !important;
+  }
+}
+
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;
