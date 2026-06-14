@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/layout/PageHeader';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useDashboardStats, useRecentTransactions, useCollectionTrends, usePaymentMethodsBreakdown } from '../../hooks/useDashboard';
 import { SocketContext } from '../../context/SocketContext';
 import { AuthContext } from '../../context/AuthContext';
@@ -147,11 +147,19 @@ const TrendChart = () => {
 
 const Dashboard = () => {
   const { openSidebar } = useOutletContext() || {};
+  const navigate = useNavigate();
   const { socket } = useContext(SocketContext);
   const { user } = useContext(AuthContext);
   const queryClient = useQueryClient();
   const schoolName = user?.school?.name || (user?.role === 'super_admin' ? 'All schools' : '');
   const [liveUpdate, setLiveUpdate] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const onSearch = (e) => {
+    e.preventDefault();
+    const q = searchTerm.trim();
+    navigate(q ? `/students?q=${encodeURIComponent(q)}` : '/students');
+  };
 
   const { data: stats = mockDashboardStats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { data: transactions = mockRecentTransactions.slice(0, 5), isLoading: txnLoading } = useRecentTransactions(5);
@@ -210,20 +218,29 @@ const Dashboard = () => {
         onMenuClick={openSidebar}
         actions={
           <>
-            <div className="relative hidden md:flex items-center w-72 h-11 bg-white border border-line rounded-lg overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
-              <div className="pl-4 pr-2 text-text-muted flex items-center justify-center">
+            <form onSubmit={onSearch} className="relative hidden md:flex items-center w-72 h-11 bg-white border border-line rounded-lg overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+              <button type="submit" className="pl-4 pr-2 text-text-muted flex items-center justify-center hover:text-primary" aria-label="Search students">
                 <span className="material-symbols-outlined text-[20px]">search</span>
-              </div>
+              </button>
               <input
-                className="w-full bg-transparent border-none text-text-main text-sm placeholder:text-text-muted focus:ring-0 focus:outline-none h-full"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-transparent border-none text-text-main text-sm placeholder:text-text-muted focus:ring-0 focus:outline-none h-full pr-3"
                 placeholder="Search student or adm no..."
               />
-            </div>
-            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-lg transition-colors">
+            </form>
+            <button
+              onClick={() => navigate('/finance')}
+              className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-lg transition-colors"
+            >
               <span className="material-symbols-outlined text-[20px]">add</span>
               <span className="hidden sm:inline">Record Payment</span>
             </button>
-            <button className="size-11 flex items-center justify-center rounded-lg bg-white border border-line text-text-muted hover:text-primary hover:bg-paper-2 transition-all relative">
+            <button
+              onClick={() => navigate('/finance/suspense')}
+              title="Payments needing attention"
+              className="size-11 flex items-center justify-center rounded-lg bg-white border border-line text-text-muted hover:text-primary hover:bg-paper-2 transition-all relative"
+            >
               <span className="material-symbols-outlined text-[22px]">notifications</span>
               <span className="absolute top-2.5 right-3 size-2 bg-red-500 rounded-full border border-white"></span>
             </button>
@@ -392,7 +409,7 @@ const Dashboard = () => {
                     <span className="size-1.5 rounded-full bg-success" /> Live
                   </span>
                 </div>
-                <button className="flex items-center gap-1 text-primary text-[13px] font-bold hover:underline">
+                <button onClick={() => navigate('/finance')} className="flex items-center gap-1 text-primary text-[13px] font-bold hover:underline">
                   View all
                   <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                 </button>

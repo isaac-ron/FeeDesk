@@ -21,7 +21,10 @@ const renderTemplate = (template, ctx) => {
 // Resolve the recipient list from a campaign's filter.
 // Returns [{ student, outstanding }].
 const resolveRecipients = async (schoolId, filter = {}) => {
-  const studentQuery = { school: schoolId, isActive: true };
+  // NB: Student uses `status: 'Active'`, not `isActive` (which doesn't exist on
+  // the model). The old `isActive: true` matched zero students, so every
+  // campaign resolved an empty recipient list — i.e. "filters don't work".
+  const studentQuery = { school: schoolId, status: 'Active' };
   if (filter.classLevel && filter.classLevel !== 'ALL') studentQuery.classLevel = filter.classLevel;
   if (Array.isArray(filter.studentIds) && filter.studentIds.length) {
     studentQuery._id = { $in: filter.studentIds };

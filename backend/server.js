@@ -10,6 +10,7 @@ const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 const { apiLimiter, authLimiter } = require('./middleware/securityMiddleware');
 const { startFeeReminderJob } = require('./jobs/feeReminderJob');
+const { startTermRolloverJob } = require('./jobs/termRolloverJob');
 const { startPaymentWorker } = require('./workers/paymentWorker');
 const { startSmsWorker } = require('./workers/smsWorker');
 
@@ -142,6 +143,7 @@ connectDB().then(() => {
 
     // Start scheduled jobs
     startFeeReminderJob();
+    startTermRolloverJob();
 
     // Start BullMQ workers (requires Redis).
     // Workers are optional — if Redis is unavailable, the server still runs
