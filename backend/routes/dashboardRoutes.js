@@ -89,12 +89,14 @@ router.get('/stats', protect, async (req, res) => {
       status: 'Active'
     });
 
-    // Students with a non-zero balance ("owing") vs the rest ("cleared").
-    // currentBalance is kept in sync with the StudentFee ledger by balanceService.
+    // Students who owe vs the rest ("cleared"). Per balanceService, the sign
+    // convention is currentBalance < 0 → owes, = 0 → fully paid / nothing
+    // charged. (Was $gt: 0, which only matched overpaid credit balances, so
+    // everyone showed as cleared when no payments had been made.)
     const studentsOwing = await Student.countDocuments({
       school: req.user.school,
       status: 'Active',
-      currentBalance: { $gt: 0 }
+      currentBalance: { $lt: 0 }
     });
     const studentsCleared = Math.max(0, activeStudents - studentsOwing);
 
