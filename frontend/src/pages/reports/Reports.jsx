@@ -3,13 +3,126 @@ import { useOutletContext } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import api from '../../services/api';
 
+const MONTHS_SHORT = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const YEAR_COLORS = ['#C7E8FF', '#93D0FF', '#5CB8FF', '#1251A3']; // oldest → newest
+const fmtShort = (n) =>
+  n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(Math.round(n || 0));
+const fmtKES = (n) => `KES ${new Intl.NumberFormat('en-KE').format(Math.round(n || 0))}`;
+
+// Multi-year, year-over-year collections — the analytical centerpiece of the
+// reports page. One line per calendar year over 12 months, plus a per-term
+// breakdown table across years.
+const MultiYearTrends = ({ trends }) => {
+  if (!trends?.years?.length) return null;
+  const { years, monthly, byYear, yoyPercent } = trends;
+
+  const W = 760, H = 248, padL = 46, padR = 16, padT = 14, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(...years.flatMap((y) => monthly[y]), 1);
+  const xAt = (m) => padL + (m / 11) * plotW;
+  const yAt = (v) => padT + (1 - v / max) * plotH;
+  const colorFor = (idx) => YEAR_COLORS[YEAR_COLORS.length - 1 - (years.length - 1 - idx)] || YEAR_COLORS[0];
+  const newest = years.length - 1;
+
+  return (
+    <div className="bg-white border border-line rounded-2xl p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+        <div>
+          <h3 className="font-header text-lg font-bold text-ink">Collections, year over year</h3>
+          <p className="text-sm text-body">Monthly collected, last {years.length} years</p>
+        </div>
+        {yoyPercent != null && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${yoyPercent >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            <span className="material-symbols-outlined text-[18px]">{yoyPercent >= 0 ? 'trending_up' : 'trending_down'}</span>
+            {yoyPercent >= 0 ? '+' : ''}{yoyPercent}% vs {years[newest - 1]}
+          </span>
+        )}
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Year over year collections">
+        {/* gridlines + y labels */}
+        {[0, 0.5, 1].map((f, i) => {
+          const gy = padT + (1 - f) * plotH;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={gy} x2={W - padR} y2={gy} stroke="#E5E3DB" strokeDasharray="3 3" />
+              <text x={padL - 8} y={gy + 3} textAnchor="end" fontSize="10" fill="#9CA3AF" fontWeight="600">{fmtShort(max * f)}</text>
+            </g>
+          );
+        })}
+        {/* month ticks */}
+        {MONTHS_SHORT.map((m, i) => (
+          <text key={i} x={xAt(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#9CA3AF" fontWeight="700">{m}</text>
+        ))}
+        {/* one polyline per year */}
+        {years.map((yr, idx) => (
+          <polyline
+            key={yr}
+            fill="none"
+            stroke={colorFor(idx)}
+            strokeWidth={idx === newest ? 2.75 : 1.75}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            points={monthly[yr].map((v, m) => `${xAt(m)},${yAt(v)}`).join(' ')}
+            opacity={idx === newest ? 1 : 0.85}
+          />
+        ))}
+      </svg>
+
+      {/* legend */}
+      <div className="flex flex-wrap items-center gap-4 mt-3">
+        {years.map((yr, idx) => (
+          <span key={yr} className="flex items-center gap-1.5 text-xs font-semibold text-body">
+            <span className="w-3.5 h-[3px] rounded-full" style={{ background: colorFor(idx) }} />
+            {yr}
+          </span>
+        ))}
+      </div>
+
+      {/* per-term breakdown across years */}
+      <div className="mt-6 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left font-mono-brand text-[11px] uppercase tracking-wide text-body border-b border-line">
+              <th className="py-2 pr-4 font-medium">Year</th>
+              <th className="py-2 px-4 font-medium text-right">Term 1</th>
+              <th className="py-2 px-4 font-medium text-right">Term 2</th>
+              <th className="py-2 px-4 font-medium text-right">Term 3</th>
+              <th className="py-2 pl-4 font-medium text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {[...byYear].reverse().map((r) => (
+              <tr key={r.year}>
+                <td className="py-2.5 pr-4 font-bold text-ink">{r.year}</td>
+                <td className="py-2.5 px-4 text-right text-body tabular-nums">{fmtKES(r.term1)}</td>
+                <td className="py-2.5 px-4 text-right text-body tabular-nums">{fmtKES(r.term2)}</td>
+                <td className="py-2.5 px-4 text-right text-body tabular-nums">{fmtKES(r.term3)}</td>
+                <td className="py-2.5 pl-4 text-right font-bold text-primary tabular-nums">{fmtKES(r.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const Reports = () => {
   const { openSidebar } = useOutletContext() || {};
   const [selectedReport, setSelectedReport] = useState('fee-collection');
   const [dateRange, setDateRange] = useState('last-30-days');
   const [reportData, setReportData] = useState(null);
+  const [trends, setTrends] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Multi-year trends are independent of the dateRange filter — fetch once.
+  useEffect(() => {
+    api.get('/reports/trends', { params: { years: 4 } })
+      .then((r) => setTrends(r.data.data))
+      .catch(() => {});
+  }, []);
 
   const formatCurrency = (amount) => {
     return `KES ${new Intl.NumberFormat('en-KE').format(amount)}`;
@@ -94,6 +207,9 @@ const Reports = () => {
 
             {/* Main Report Area */}
             <div className="flex-1 p-6 md:p-8 space-y-8 bg-slate-50/50 overflow-y-auto">
+              {/* Multi-year analysis — always shown, independent of the period filter */}
+              <MultiYearTrends trends={trends} />
+
               {loading ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

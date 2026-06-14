@@ -50,6 +50,64 @@ const buildDateFilter = (dateRange) => {
   return { $gte: start, $lte: now };
 };
 
+// @desc    Multi-year collection trends (year-over-year)
+// @route   GET /api/reports/trends?years=3
+// @access  Private
+//
+// Returns monthly collected totals grouped by calendar year so the client can
+// draw a year-over-year chart, plus per-year and per-term (Jan-Apr / May-Aug /
+// Sep-Dec) rollups for multi-year analysis.
+router.get('/trends', async (req, res) => {
+  try {
+    const schoolId = req.user.school;
+    if (!schoolId) return res.status(400).json({ success: false, message: 'No school associated' });
+
+    const yearsBack = Math.min(Math.max(parseInt(req.query.years) || 3, 1), 6);
+    const currentYear = new Date().getFullYear();
+    const years = Array.from({ length: yearsBack }, (_, i) => currentYear - (yearsBack - 1) + i);
+    const start = new Date(years[0], 0, 1);
+
+    const rows = await Transaction.aggregate([
+      { $match: { school: schoolId, status: 'COMPLETED', type: 'CREDIT', createdAt: { $gte: start } } },
+      {
+        $group: {
+          _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' } },
+          amount: { $sum: '$amount' },
+          txns: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // monthly[year] = [12 numbers]; seed zeros so the chart has a dense series.
+    const monthly = {};
+    years.forEach((y) => { monthly[y] = Array(12).fill(0); });
+    for (const r of rows) {
+      if (monthly[r._id.y]) monthly[r._id.y][r._id.m - 1] = r.amount;
+    }
+
+    // Per-year totals and per-term (Kenya: T1 Jan-Apr, T2 May-Aug, T3 Sep-Dec).
+    const byYear = years.map((y) => {
+      const m = monthly[y];
+      const sum = (a, b) => m.slice(a, b).reduce((s, v) => s + v, 0);
+      const total = m.reduce((s, v) => s + v, 0);
+      return { year: y, total, term1: sum(0, 4), term2: sum(4, 8), term3: sum(8, 12) };
+    });
+
+    // Year-over-year delta on the most recent two years.
+    let yoyPercent = null;
+    if (byYear.length >= 2) {
+      const prev = byYear[byYear.length - 2].total;
+      const curr = byYear[byYear.length - 1].total;
+      if (prev > 0) yoyPercent = Math.round(((curr - prev) / prev) * 100);
+    }
+
+    res.json({ success: true, data: { years, monthly, byYear, yoyPercent } });
+  } catch (error) {
+    console.error('Report trends error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // @desc    Get report data
 // @route   GET /api/reports
 // @access  Private

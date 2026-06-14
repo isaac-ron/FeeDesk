@@ -20,6 +20,104 @@ const emptyForm = () => ({
   endDate: '',
 });
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BAND = {
+  ACTIVE: 'bg-emerald-500/15 border-emerald-500/50 text-emerald-800',
+  DRAFT: 'bg-primary/10 border-primary/40 text-primary',
+  ARCHIVED: 'bg-amber-500/15 border-amber-500/50 text-amber-800',
+};
+
+// Fraction of the year (0–12) for a date, including the day for smooth placement.
+const yearPos = (d) => {
+  const dt = new Date(d);
+  const daysInMonth = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+  return dt.getMonth() + (dt.getDate() - 1) / daysInMonth;
+};
+
+// Visual academic calendar: each term drawn as a band across the 12 months of a
+// selected year. Replaces "another list" with an at-a-glance year view, and the
+// year selector makes it multi-year aware.
+const TermCalendar = ({ terms }) => {
+  const years = [...new Set(terms.map((t) => t.academicYear))].sort().reverse();
+  const [year, setYear] = useState(years[0] || String(new Date().getFullYear()));
+
+  const yearTerms = terms
+    .filter((t) => t.academicYear === year && t.startDate && t.endDate)
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+  const now = new Date();
+  const showToday = String(now.getFullYear()) === String(year);
+  const todayLeft = (yearPos(now) / 12) * 100;
+
+  return (
+    <div className="bg-white border border-line rounded-2xl p-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 className="font-header text-lg font-bold text-ink">Academic calendar</h3>
+          <p className="text-sm text-body">Terms across {year}</p>
+        </div>
+        <select
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          className="px-3 py-2 border border-line rounded-lg text-sm bg-white"
+        >
+          {years.length === 0 && <option value={year}>{year}</option>}
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-12 mb-2">
+        {MONTHS.map((m) => (
+          <div key={m} className="text-center text-[11px] font-mono-brand uppercase tracking-wide text-body">{m}</div>
+        ))}
+      </div>
+
+      <div className="relative h-16 rounded-xl bg-paper border border-line overflow-hidden">
+        {/* month gridlines */}
+        <div className="absolute inset-0 grid grid-cols-12 pointer-events-none">
+          {MONTHS.map((_, i) => (
+            <div key={i} className={i === 0 ? '' : 'border-l border-line/70'} />
+          ))}
+        </div>
+
+        {/* today marker */}
+        {showToday && (
+          <div className="absolute top-0 bottom-0 w-0.5 bg-primary z-20" style={{ left: `${todayLeft}%` }}>
+            <span className="absolute top-1 left-1 text-[9px] font-bold text-primary">Today</span>
+          </div>
+        )}
+
+        {/* term bands */}
+        {yearTerms.length === 0 ? (
+          <p className="absolute inset-0 flex items-center justify-center text-sm text-body">No dated terms for {year}.</p>
+        ) : (
+          yearTerms.map((t) => {
+            const left = (yearPos(t.startDate) / 12) * 100;
+            const width = Math.max(5, ((yearPos(t.endDate) - yearPos(t.startDate)) / 12) * 100);
+            return (
+              <div
+                key={t._id}
+                className={`absolute top-2 bottom-2 rounded-lg border flex flex-col justify-center px-3 overflow-hidden ${BAND[t.status] || BAND.DRAFT}`}
+                style={{ left: `${left}%`, width: `${width}%` }}
+                title={`${t.name} · ${formatDate(t.startDate)} – ${formatDate(t.endDate)} · ${t.status}`}
+              >
+                <span className="text-xs font-bold truncate leading-tight">{t.name}</span>
+                <span className="text-[10px] opacity-80 truncate leading-tight">{formatDate(t.startDate)} – {formatDate(t.endDate)}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 mt-4 text-xs text-body">
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-emerald-500" />Active</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary" />Draft / upcoming</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-amber-500" />Archived</span>
+      </div>
+    </div>
+  );
+};
+
 const Terms = () => {
   const { openSidebar } = useOutletContext() || {};
   const { terms, refresh, loading } = useContext(TermContext);
@@ -106,6 +204,8 @@ const Terms = () => {
       />
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
         {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>}
+
+        {realTerms.length > 0 && <TermCalendar terms={realTerms} />}
 
         <div className="bg-white border border-surface-border rounded-2xl overflow-hidden">
           {loading ? (
