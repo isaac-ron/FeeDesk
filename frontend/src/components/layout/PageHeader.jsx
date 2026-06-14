@@ -9,7 +9,7 @@
 //     actions={<button>+ New structure</button>}
 //   />
 const PageHeader = ({ title, subtitle, actions, onMenuClick }) => (
-  <header className="flex items-center justify-between px-8 py-5 border-b border-surface-border bg-white/90 backdrop-blur-md sticky top-0 z-10">
+  <header className="flex items-center justify-between px-8 py-5 border-b border-line bg-paper/80 backdrop-blur-md sticky top-0 z-10">
     <div className="flex items-center gap-4">
       <button
         className="lg:hidden text-text-main"

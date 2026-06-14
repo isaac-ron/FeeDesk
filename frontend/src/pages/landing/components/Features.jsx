@@ -1,81 +1,26 @@
 import { useReveal } from '../hooks/useReveal';
 
-const primaryFeatures = [
-  {
-    icon: 'phone_android',
-    title: 'M-PESA Paybill',
-    body: 'Parents pay via M-PESA; funds auto-allocate to the correct student account the moment the webhook fires. C2B and STK Push both supported.',
-  },
-  {
-    icon: 'account_balance',
-    title: 'Bank Reconciliation',
-    body: 'KCB BUNI and Equity Jenga IPNs reconciled in real-time. No CSVs, no manual imports, no end-of-day batch jobs.',
-  },
+const modules = [
+  { icon: 'phone_android',     title: 'M-PESA Paybill',       body: 'C2B + STK Push, auto-allocated by admission number.' },
+  { icon: 'account_balance',   title: 'Bank Reconciliation',  body: 'KCB BUNI & Equity Jenga IPNs matched in real time.' },
+  { icon: 'sms',               title: 'SMS Reminders',        body: 'Automated Monday & Thursday nudges, branded sender ID.' },
+  { icon: 'receipt_long',      title: 'Printable Receipts',   body: 'One-click A5 receipt per transaction, straight to print.' },
+  { icon: 'manage_search',     title: 'Audit Trail',          body: 'Immutable ledger for every charge, payment, reallocation.' },
+  { icon: 'school',            title: 'Multi-School',         body: 'Each school isolated — own paybill, credentials, data.' },
+  { icon: 'rule',              title: 'Smart Matching',       body: 'Ranked candidate suggestions resolve unmatched payments.' },
+  { icon: 'pie_chart',         title: 'Fee Structures',       body: 'Per-class, pro-rata categories with derived balances.' },
+  { icon: 'dashboard',         title: 'Live Dashboard',       body: 'Collected, outstanding, and SMS at a glance, in real time.' },
 ];
 
-const secondaryFeatures = [
-  {
-    icon: 'sms',
-    title: 'SMS Reminders',
-    body: 'Automated alerts every Monday and Thursday for outstanding balances — TextSMS Kenya, branded sender ID.',
-  },
-  {
-    icon: 'receipt_long',
-    title: 'Printable Receipts',
-    body: 'One-click A5 receipt per transaction. Print directly from the browser.',
-  },
-  {
-    icon: 'manage_search',
-    title: 'Audit Trail',
-    body: 'Every charge, payment, and reallocation in an immutable ledger with full filter support.',
-  },
-  {
-    icon: 'school',
-    title: 'Multi-School',
-    body: 'Each school is fully isolated — separate paybill, credentials, and data.',
-  },
-];
-
-const cardBase = 'group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-gray-900 transition-all duration-300 hover:border-blue-600/40 hover:shadow-lg hover:shadow-blue-900/20 hover:-translate-y-1';
-
-const PrimaryCard = ({ feature, delay }) => {
+const Module = ({ module }) => {
   const [ref, visible] = useReveal();
   return (
-    <div
-      ref={ref}
-      className={`reveal ${cardBase} p-7 ${visible ? 'reveal-visible' : ''}`}
-      style={{ transitionDelay: visible ? `${delay}ms` : '0ms' }}
-    >
-      <span className="material-symbols-outlined mb-5 text-3xl text-fd-blue-400 transition-all duration-300 group-hover:text-fd-blue-300">
-        {feature.icon}
-      </span>
-      <h3 className="font-header text-xl font-bold text-white">
-        {feature.title}
-      </h3>
-      <p className="mt-3 text-base leading-relaxed text-gray-400">
-        {feature.body}
-      </p>
-    </div>
-  );
-};
-
-const SecondaryCard = ({ feature, delay }) => {
-  const [ref, visible] = useReveal();
-  return (
-    <div
-      ref={ref}
-      className={`reveal ${cardBase} p-5 ${visible ? 'reveal-visible' : ''}`}
-      style={{ transitionDelay: visible ? `${delay}ms` : '0ms' }}
-    >
-      <span className="material-symbols-outlined mb-4 text-xl text-fd-blue-400 transition-all duration-300 group-hover:text-fd-blue-300">
-        {feature.icon}
-      </span>
-      <h3 className="font-header text-base font-bold text-white">
-        {feature.title}
-      </h3>
-      <p className="mt-2 text-sm leading-relaxed text-gray-500">
-        {feature.body}
-      </p>
+    <div ref={ref} className={`reveal flex items-start gap-4 bg-paper p-6 ${visible ? 'reveal-visible' : ''}`}>
+      <span className="material-symbols-outlined mt-0.5 text-xl text-primary">{module.icon}</span>
+      <div>
+        <h3 className="font-header font-bold text-ink">{module.title}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-body">{module.body}</p>
+      </div>
     </div>
   );
 };
@@ -84,35 +29,23 @@ const Features = () => {
   const [headerRef, headerVisible] = useReveal();
 
   return (
-    <section id="features" className="relative overflow-hidden bg-gray-950 py-20 sm:py-24 lg:py-28">
-      {/* Mesh overlay */}
-      <div aria-hidden="true" className="fd-mesh pointer-events-none absolute inset-0" />
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section id="features" className="bg-paper py-24">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div
           ref={headerRef}
-          className={`reveal mx-auto max-w-2xl ${headerVisible ? 'reveal-visible' : ''}`}
+          className={`reveal mb-12 flex flex-wrap items-end justify-between gap-6 ${headerVisible ? 'reveal-visible' : ''}`}
         >
-          <h2 className="font-header text-3xl font-extrabold tracking-tight text-white text-balance sm:text-4xl lg:text-5xl">
+          <h2 className="max-w-xl font-header text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             One platform. Every payment channel.
           </h2>
-          <p className="mt-5 text-lg leading-relaxed text-gray-400">
-            FeeDesk replaces the spreadsheet, the WhatsApp group, and the late-night
-            reconciliation — with one bursar-friendly dashboard.
+          <p className="font-mono-brand text-xs uppercase tracking-widest text-body">
+            9 capabilities · 1 ledger
           </p>
         </div>
 
-        {/* Primary features — 2 wide cards */}
-        <div className="mt-14 grid gap-4 sm:grid-cols-2">
-          {primaryFeatures.map((feature, idx) => (
-            <PrimaryCard key={feature.title} feature={feature} delay={idx * 100} />
-          ))}
-        </div>
-
-        {/* Secondary features — 4 compact cards */}
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {secondaryFeatures.map((feature, idx) => (
-            <SecondaryCard key={feature.title} feature={feature} delay={(idx + 2) * 80} />
+        <div className="grid grid-cols-1 gap-x-8 gap-y-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+          {modules.map(module => (
+            <Module key={module.title} module={module} />
           ))}
         </div>
       </div>

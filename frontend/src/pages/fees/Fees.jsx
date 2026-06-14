@@ -9,11 +9,212 @@ import {
   usePublishFeeStructure,
   useDeleteFeeStructure,
   useSetFeeCategories,
+  useGenerateFeeStructures,
 } from '../../hooks/useFees';
 
 const CLASS_LEVELS = ['ALL', 'Grade 10', 'Grade 11', 'Grade 12'];
 
 const formatKES = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
+
+// Generate three DRAFT structures (Term 1/2/3 at 50:30:20) from one annual
+// figure, pre-filled with the standard MoE voteheads. The bursar enters a
+// single number — no manual percentages or votehead typing.
+const PLAN_BADGE = {
+  ready: 'bg-emerald-100 text-emerald-700',
+  exists: 'bg-amber-100 text-amber-700',
+  archived_term: 'bg-amber-100 text-amber-700',
+  missing_term: 'bg-red-100 text-red-700',
+};
+const PLAN_LABEL = {
+  ready: 'Will create',
+  exists: 'Already exists',
+  archived_term: 'Term archived',
+  missing_term: 'No term',
+};
+
+const GenerateModal = ({ terms, activeTerm, onClose }) => {
+  const generate = useGenerateFeeStructures();
+  const years = [...new Set((terms || []).map((t) => t.academicYear))].sort().reverse();
+
+  const [academicYear, setAcademicYear] = useState(activeTerm?.academicYear || years[0] || '');
+  const [classLevel, setClassLevel] = useState('Grade 10');
+  const [annual, setAnnual] = useState('');
+  const [scope, setScope] = useState('boarding');
+  const [plan, setPlan] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Any input change invalidates a shown plan so a stale preview can't be read
+  // as the thing about to be committed (the server recomputes either way).
+  const onChange = (setter) => (val) => { setter(val); setPlan(null); setError(null); };
+
+  const annualNum = Number(annual);
+  const annualValid = Number.isFinite(annualNum) && annualNum > 0;
+
+  const body = (extra) => ({ academicYear, classLevel, annual: annualNum, scope, ...extra });
+
+  const doPreview = async () => {
+    setError(null);
+    try {
+      const res = await generate.mutateAsync(body({ preview: true }));
+      setPlan(res.plan || []);
+    } catch (e) {
+      setError(e.response?.data?.message || e.message || 'Preview failed');
+    }
+  };
+
+  const doCommit = async () => {
+    setError(null);
+    try {
+      const res = await generate.mutateAsync(body({}));
+      if (!res.count) {
+        const why = (res.skipped || []).map((s) => `Term ${s.termNumber}: ${s.reason}`).join('; ');
+        setError(why || 'Nothing created — structures already exist for this class.');
+        return;
+      }
+      onClose();
+    } catch (e) {
+      setError(e.response?.data?.message || e.message || 'Generate failed');
+    }
+  };
+
+  const cats = plan?.find((p) => p.categories?.length)?.categories || [];
+  const readyCount = plan?.filter((p) => p.state === 'ready').length || 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-surface-border">
+          <div>
+            <h3 className="text-lg font-bold text-text-main font-display">Generate from annual total</h3>
+            <p className="text-xs text-text-muted">One annual fee → three terms (50:30:20) with standard voteheads</p>
+          </div>
+          <button type="button" onClick={onClose} className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto">
+          {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-text-muted uppercase mb-1.5">Academic year *</label>
+              <select
+                value={academicYear}
+                onChange={(e) => onChange(setAcademicYear)(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-border rounded-lg text-sm bg-white"
+              >
+                {years.length === 0 && <option value="">No terms yet</option>}
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-text-muted uppercase mb-1.5">Class *</label>
+              <select
+                value={classLevel}
+                onChange={(e) => onChange(setClassLevel)(e.target.value)}
+                className="w-full px-4 py-2.5 border border-surface-border rounded-lg text-sm bg-white"
+              >
+                {CLASS_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-text-muted uppercase mb-1.5">Annual fee (KES) *</label>
+            <input
+              type="number" min="0" step="1"
+              value={annual}
+              onChange={(e) => onChange(setAnnual)(e.target.value)}
+              placeholder="e.g. 53554"
+              className="w-full px-4 py-2.5 border border-surface-border rounded-lg text-sm bg-white"
+            />
+            <p className="text-xs text-text-muted mt-1">National / senior boarding is KES 53,554 per year. Term 1 bills 50%, Term 2 30%, Term 3 20%.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-text-muted uppercase mb-1.5">School type</label>
+            <div className="flex gap-2">
+              {[{ k: 'boarding', l: 'Boarding' }, { k: 'day', l: 'Day' }].map((o) => (
+                <button
+                  key={o.k}
+                  type="button"
+                  onClick={() => onChange(setScope)(o.k)}
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
+                    scope === o.k ? 'border-primary bg-primary/10 text-primary' : 'border-surface-border text-text-muted hover:bg-slate-50'
+                  }`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Plan preview */}
+          {plan && (
+            <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-3 gap-2">
+                {plan.map((p) => (
+                  <div key={p.termNumber} className="rounded-xl border border-surface-border p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text-muted">Term {p.termNumber}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${PLAN_BADGE[p.state]}`}>{PLAN_LABEL[p.state]}</span>
+                    </div>
+                    <p className="mt-1.5 text-base font-extrabold text-text-main font-display tabular-nums">{formatKES(p.amount)}</p>
+                    <p className="text-[11px] text-text-muted">{p.termName || '—'}</p>
+                  </div>
+                ))}
+              </div>
+
+              {cats.length > 0 && (
+                <div className="rounded-xl border border-surface-border overflow-hidden">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-surface-border flex items-center justify-between">
+                    <span className="text-xs font-bold text-text-muted uppercase">Voteheads (each term)</span>
+                    <span className="text-xs font-bold text-text-muted">{cats.length} · annual KES</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 max-h-44 overflow-y-auto">
+                    {cats.map((c) => (
+                      <div key={c.name} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="text-text-main">{c.name}</span>
+                        <span className="flex items-center gap-3 tabular-nums">
+                          <span className="text-text-muted text-xs">{c.percent}%</span>
+                          <span className="font-semibold text-text-main w-24 text-right">{formatKES(Math.round(annualNum * c.percent / 100))}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-surface-border">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg border border-surface-border text-sm font-medium">Cancel</button>
+          {!plan ? (
+            <button
+              type="button"
+              onClick={doPreview}
+              disabled={!annualValid || !academicYear || generate.isPending}
+              className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-bold disabled:opacity-60"
+            >
+              {generate.isPending ? 'Calculating…' : 'Preview split'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={doCommit}
+              disabled={readyCount === 0 || generate.isPending}
+              className="px-6 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-60"
+            >
+              {generate.isPending ? 'Generating…' : `Generate ${readyCount} draft${readyCount === 1 ? '' : 's'}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const blankCatRow = () => ({ name: '', percent: '' });
 
@@ -196,6 +397,7 @@ const Fees = () => {
   const [filterTerm, setFilterTerm] = useState('');
 
   const [showModal, setShowModal] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ term: '', classLevel: 'ALL', amount: '', label: 'Term fees' });
   const [formError, setFormError] = useState(null);
@@ -309,13 +511,22 @@ const Fees = () => {
         subtitle="Set the term fee for each class, then publish to invoice students"
         onMenuClick={openSidebar}
         actions={
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 h-11 px-6 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-full shadow-lg shadow-primary/10"
-          >
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            New structure
-          </button>
+          <>
+            <button
+              onClick={() => setShowGenerate(true)}
+              className="flex items-center gap-2 h-11 px-5 bg-white border border-surface-border hover:bg-slate-50 text-text-main text-sm font-bold rounded-full"
+            >
+              <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+              <span className="hidden sm:inline">Generate from annual</span>
+            </button>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 h-11 px-6 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-full shadow-lg shadow-primary/10"
+            >
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              New structure
+            </button>
+          </>
         }
       />
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
@@ -476,6 +687,10 @@ const Fees = () => {
 
       {catStructure && (
         <CategoryModal structure={catStructure} onClose={() => setCatStructure(null)} />
+      )}
+
+      {showGenerate && (
+        <GenerateModal terms={realTerms} activeTerm={activeTerm} onClose={() => setShowGenerate(false)} />
       )}
     </>
   );

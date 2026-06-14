@@ -14,9 +14,9 @@ const Layout = () => {
   if (!user) return <Navigate to="/login" />;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-paper">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-white min-w-0">
+      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-paper min-w-0">
         {/* Pages render <PageHeader /> + their content here. The Outlet
             context exposes a mobile-menu opener so PageHeader's hamburger
             button can toggle the sidebar on small screens. */}

@@ -40,6 +40,19 @@ export const useSetFeeCategories = () => {
   });
 };
 
+// Generate three DRAFT structures (Term 1/2/3 at 50:30:20) from one annual
+// total, each pre-filled with the standard MoE voteheads. Pass `preview: true`
+// to get the computed plan back without persisting anything.
+export const useGenerateFeeStructures = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/fee-structures/generate', data).then((r) => r.data),
+    onSuccess: (_data, variables) => {
+      if (!variables?.preview) qc.invalidateQueries({ queryKey: [FEE_STRUCTURES_KEY] });
+    },
+  });
+};
+
 export const usePublishFeeStructure = () => {
   const qc = useQueryClient();
   return useMutation({

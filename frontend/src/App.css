@@ -170,6 +170,24 @@ html {
   }
 }
 
+/* ==================================================================
+   Doss-style landing — isometric cube float
+   The cube <g> animates on an INNER group; the OUTER group keeps its
+   SVG transform="translate()" so the CSS transform here never clobbers
+   positioning.
+   ================================================================== */
+@keyframes fd-cube-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.fd-cube-1 { animation: fd-cube-float 7s ease-in-out infinite; }
+.fd-cube-2 { animation: fd-cube-float 9s ease-in-out infinite reverse; }
+.fd-cube-3 { animation: fd-cube-float 8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-cube-1, .fd-cube-2, .fd-cube-3 { animation: none !important; }
+}
+
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;

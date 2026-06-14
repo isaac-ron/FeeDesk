@@ -6,6 +6,7 @@ const LedgerEntry = require('../models/LedgerEntry');
 const { recomputeManyStudentBalances } = require('../services/balanceService');
 const { recordAudit } = require('../services/auditService');
 const { parseCategoryCsv, validateCategories } = require('../services/feeCategoryService');
+const { generateFeeStructures } = require('../utils/voteheadAllocation');
 
 const schoolFilter = (req) => {
   if (req.user.role === 'super_admin') return {};
@@ -278,6 +279,111 @@ const setStructureCategories = async (req, res) => {
   }
 };
 
+// POST /api/fee-structures/generate
+// Body: { academicYear, classLevel, annual, scope ('boarding'|'day'), label?, preview? }
+//
+// One annual figure in → three DRAFT structures out (Term 1/2/3 at 50:30:20),
+// each pre-filled with the standard MoE voteheads as pro-rata categories. No
+// manual percentages or votehead typing. Pass `preview: true` to compute the
+// plan without persisting (so the UI can show it before committing).
+const generateStructures = async (req, res) => {
+  try {
+    const schoolId = resolveSchool(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'School is required' });
+
+    const { academicYear, classLevel = 'ALL', annual, scope = 'boarding', label, preview } = req.body;
+
+    if (!academicYear) {
+      return res.status(400).json({ success: false, message: 'academicYear is required' });
+    }
+    if (!['boarding', 'day'].includes(scope)) {
+      return res.status(400).json({ success: false, message: 'scope must be "boarding" or "day"' });
+    }
+    const annualNum = Number(annual);
+    if (!Number.isFinite(annualNum) || annualNum <= 0) {
+      return res.status(400).json({ success: false, message: 'annual must be a positive number' });
+    }
+
+    // The (up to) three terms for this academic year.
+    const terms = await Term.find({ school: schoolId, academicYear }).sort({ termNumber: 1 });
+    if (!terms.length) {
+      return res.status(400).json({ success: false, message: `No terms found for ${academicYear}. Create the terms first.` });
+    }
+    const termByNumber = new Map(terms.map((t) => [t.termNumber, t]));
+
+    // Heuristic: 50:30:20 term amounts + identical votehead category list.
+    const planned = generateFeeStructures({ annual: annualNum, scope });
+
+    const plan = [];
+    for (const item of planned) {
+      const term = termByNumber.get(item.termIndex);
+      const base = { termNumber: item.termIndex, amount: item.amount, categories: item.categories };
+      if (!term) {
+        plan.push({ ...base, termId: null, termName: null, state: 'missing_term' });
+        continue;
+      }
+      const exists = await FeeStructure.exists({ school: schoolId, term: term._id, classLevel });
+      plan.push({
+        ...base,
+        termId: term._id,
+        termName: term.name,
+        termStatus: term.status,
+        state: exists ? 'exists' : term.status === 'ARCHIVED' ? 'archived_term' : 'ready',
+      });
+    }
+
+    if (preview) {
+      return res.json({ success: true, preview: true, classLevel, scope, annual: annualNum, plan });
+    }
+
+    // Commit: create DRAFT structures only where ready.
+    const created = [];
+    const skipped = [];
+    for (const p of plan) {
+      if (p.state !== 'ready') {
+        const reason = {
+          missing_term: 'No matching term',
+          exists: 'Structure already exists',
+          archived_term: 'Term is archived',
+        }[p.state] || 'Skipped';
+        skipped.push({ termNumber: p.termNumber, reason });
+        continue;
+      }
+      try {
+        const doc = await FeeStructure.create({
+          school: schoolId,
+          term: p.termId,
+          classLevel,
+          amount: p.amount,
+          label: label || `Term ${p.termNumber} fees`,
+          categories: p.categories,
+          status: 'DRAFT',
+        });
+        created.push(doc);
+      } catch (e) {
+        if (e.code === 11000) skipped.push({ termNumber: p.termNumber, reason: 'Structure already exists' });
+        else throw e;
+      }
+    }
+
+    if (created.length) {
+      recordAudit({
+        school: schoolId,
+        user: req.user._id,
+        action: 'fee_structure.generate',
+        entityType: 'FEE_STRUCTURE',
+        entityId: created[0]._id,
+        description: `Generated ${created.length} DRAFT structure(s) for ${classLevel} (${academicYear}) from annual KES ${annualNum.toLocaleString()} — ${scope}`,
+        metadata: { academicYear, classLevel, annual: annualNum, scope, created: created.length, voteheads: created[0].categories?.length || 0 },
+      });
+    }
+
+    res.status(created.length ? 201 : 200).json({ success: true, created, skipped, count: created.length });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 const deleteStructure = async (req, res) => {
   try {
     const structure = await FeeStructure.findById(req.params.id);
@@ -300,5 +406,6 @@ module.exports = {
   updateStructure,
   publishStructure,
   setStructureCategories,
+  generateStructures,
   deleteStructure,
 };

@@ -45,6 +45,12 @@ export default {
         "fd-canvas": "#06070a",
         "fd-ink":    "#0f1117",
         "fd-rim":    "#1c2030",
+        // Doss-style warm-neutral surface system (landing page)
+        "paper":   "#F7F6F2",
+        "paper-2": "#EFEEE8",
+        "ink":     "#0E0F12",
+        "body":    "#56585F",
+        "line":    "#E5E3DB",
       },
       fontFamily: {
         "display": ["Manrope", "sans-serif"],

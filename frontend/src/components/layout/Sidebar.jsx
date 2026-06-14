@@ -50,11 +50,11 @@ const NavItem = ({ to, icon, label }) => (
   <NavLink
     to={to}
     className={({ isActive }) =>
-      // Left accent bar in the brand colour when active, per the spec.
-      `relative flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all group ${
+      // Filled pill when active (Doss-style) — no side-stripe.
+      `relative flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all group ${
         isActive
-          ? 'bg-primary/10 text-primary font-bold before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-1 before:bg-primary before:rounded-r-full'
-          : 'text-text-muted hover:bg-slate-50 hover:text-primary'
+          ? 'bg-primary/10 text-primary font-bold'
+          : 'text-body hover:bg-paper-2 hover:text-primary'
       }`
     }
   >
@@ -91,7 +91,7 @@ const Sidebar = ({ open, onClose }) => {
       )}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-surface-border
+          fixed inset-y-0 left-0 z-40 w-64 bg-paper border-r border-line
           flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)]
           transform transition-transform duration-200
           ${open ? 'translate-x-0' : '-translate-x-full'}
@@ -146,12 +146,12 @@ const Sidebar = ({ open, onClose }) => {
         </div>
 
         {/* User footer */}
-        <div className="p-6 border-t border-surface-border">
+        <div className="p-6 border-t border-line">
           <div
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors group cursor-pointer"
+            className="flex items-center gap-3 p-2 rounded-lg hover:bg-paper-2 transition-colors group cursor-pointer"
             onClick={logout}
           >
-            <div className="size-10 rounded-full bg-slate-100 flex items-center justify-center text-primary font-bold border border-slate-200 text-sm">
+            <div className="size-10 rounded-full bg-paper-2 flex items-center justify-center text-primary font-bold border border-line text-sm">
               {initials}
             </div>
             <div className="flex-1 flex flex-col min-w-0">

@@ -48,7 +48,7 @@ const TrendChart = () => {
   const avg = data.length ? data.reduce((s, v) => s + v, 0) / data.length : 0;
 
   return (
-    <div className="flex-[2] min-w-0 flex flex-col rounded-[18px] border border-surface-border bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+    <div className="flex-[2] min-w-0 flex flex-col rounded-[18px] border border-line bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
       {/* Header: title + range filter + total */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
@@ -56,7 +56,7 @@ const TrendChart = () => {
           <p className="text-[12.5px] text-text-muted mt-0.5">{sub}</p>
         </div>
         <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-0.5 rounded-full bg-fd-gray-100 p-[3px]">
+          <div className="flex items-center gap-0.5 rounded-full bg-paper-2 p-[3px]">
             {TREND_RANGES.map((r) => {
               const on = r === range;
               return (
@@ -127,7 +127,7 @@ const TrendChart = () => {
           </div>
         </div>
         {/* X-axis labels */}
-        <div className="flex justify-between mt-2 pt-2 border-t border-fd-gray-100 text-[10px] font-bold uppercase tracking-wide text-fd-gray-400">
+        <div className="flex justify-between mt-2 pt-2 border-t border-line text-[10px] font-bold uppercase tracking-wide text-fd-gray-400">
           {xlabels.map((l, i) => (
             <span key={i}>{l}</span>
           ))}
@@ -210,7 +210,7 @@ const Dashboard = () => {
         onMenuClick={openSidebar}
         actions={
           <>
-            <div className="relative hidden md:flex items-center w-72 h-11 bg-slate-50 border border-surface-border rounded-full overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+            <div className="relative hidden md:flex items-center w-72 h-11 bg-white border border-line rounded-lg overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
               <div className="pl-4 pr-2 text-text-muted flex items-center justify-center">
                 <span className="material-symbols-outlined text-[20px]">search</span>
               </div>
@@ -219,18 +219,18 @@ const Dashboard = () => {
                 placeholder="Search student or adm no..."
               />
             </div>
-            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-blue-900/20">
+            <button className="flex items-center justify-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-lg transition-colors">
               <span className="material-symbols-outlined text-[20px]">add</span>
               <span className="hidden sm:inline">Record Payment</span>
             </button>
-            <button className="size-11 flex items-center justify-center rounded-full bg-white border border-surface-border text-text-muted hover:text-primary hover:bg-slate-50 transition-all relative shadow-sm">
+            <button className="size-11 flex items-center justify-center rounded-lg bg-white border border-line text-text-muted hover:text-primary hover:bg-paper-2 transition-all relative">
               <span className="material-symbols-outlined text-[22px]">notifications</span>
               <span className="absolute top-2.5 right-3 size-2 bg-red-500 rounded-full border border-white"></span>
             </button>
           </>
         }
       />
-      <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-[22px] bg-surface-light">
+      <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-[22px] bg-paper">
         {/* Live Update Notification */}
         {liveUpdate && (
           <div className={`${
@@ -293,7 +293,7 @@ const Dashboard = () => {
             {/* 2 · Stat cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[18px]">
               {/* Collected today */}
-              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+              <div className="relative overflow-hidden rounded-[18px] border border-line bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
                 <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">payments</span>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Collected today</p>
                 <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatCurrency(stats.totalCollectedToday)}</p>
@@ -309,18 +309,18 @@ const Dashboard = () => {
               </div>
 
               {/* Outstanding balance */}
-              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+              <div className="relative overflow-hidden rounded-[18px] border border-line bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
                 <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">account_balance_wallet</span>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Outstanding balance</p>
                 <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatCurrency(stats.outstandingBalance)}</p>
-                <div className="mt-3.5 h-[7px] rounded-full bg-fd-gray-100 overflow-hidden">
+                <div className="mt-3.5 h-[7px] rounded-full bg-paper-2 overflow-hidden">
                   <div className="h-full rounded-full bg-[#D97706]" style={{ width: `${stats.outstandingPercentage}%` }} />
                 </div>
                 <p className="mt-1.5 text-[11.5px] font-medium text-fd-gray-400">{stats.outstandingPercentage}% pending collection</p>
               </div>
 
               {/* Active students */}
-              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+              <div className="relative overflow-hidden rounded-[18px] border border-line bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
                 <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">groups</span>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">Active students</p>
                 <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatNumber(stats.activeStudents)}</p>
@@ -332,7 +332,7 @@ const Dashboard = () => {
               </div>
 
               {/* SMS reminders sent */}
-              <div className="relative overflow-hidden rounded-[18px] border border-surface-border bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
+              <div className="relative overflow-hidden rounded-[18px] border border-line bg-white p-[22px] shadow-[0_1px_2px_rgba(12,16,24,0.04)] hover:shadow-[0_4px_16px_rgba(12,16,24,0.06)] transition-shadow">
                 <span className="material-symbols-outlined absolute -top-2 -right-2 text-8xl text-primary opacity-[0.04] pointer-events-none">sms</span>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-fd-gray-400">SMS reminders sent</p>
                 <p className="mt-2 text-3xl font-extrabold tracking-tight text-text-main tabular-nums font-display">{formatNumber(stats.smsSent)}</p>
@@ -348,7 +348,7 @@ const Dashboard = () => {
               <TrendChart />
 
               {/* Payment methods donut */}
-              <div className="flex-1 min-w-0 flex flex-col rounded-[18px] border border-surface-border bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+              <div className="flex-1 min-w-0 flex flex-col rounded-[18px] border border-line bg-white p-6 shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
                 <h3 className="text-[17px] font-extrabold tracking-tight text-text-main font-display">Payment methods</h3>
                 <p className="text-[12.5px] text-text-muted mt-0.5">Distribution by channel</p>
                 <div className="flex-1 flex items-center justify-center py-[18px]">
@@ -367,7 +367,7 @@ const Dashboard = () => {
                   { k: 'MPESA', dot: 'bg-primary', d: paymentMethods.mpesa },
                   { k: 'Bank transfer', dot: 'bg-fd-blue-100', d: paymentMethods.bank },
                 ].map((m) => (
-                  <div key={m.k} className="pt-3 mt-3 border-t border-fd-gray-100">
+                  <div key={m.k} className="pt-3 mt-3 border-t border-line">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-2 text-[13.5px] font-bold text-text-main">
                         <span className={`size-[11px] rounded-sm ${m.dot}`} />{m.k}
@@ -397,11 +397,11 @@ const Dashboard = () => {
                   <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                 </button>
               </div>
-              <div className="rounded-[18px] border border-surface-border bg-white overflow-hidden shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
+              <div className="rounded-[18px] border border-line bg-white overflow-hidden shadow-[0_1px_2px_rgba(12,16,24,0.04)]">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-[13.5px]">
                     <thead>
-                      <tr className="bg-surface-light border-b border-surface-border text-fd-gray-400 text-[10.5px] uppercase tracking-wide font-bold">
+                      <tr className="bg-paper border-b border-line text-fd-gray-400 text-[10.5px] uppercase tracking-wide font-bold">
                         <th className="px-5 py-3.5 font-bold">Reference</th>
                         <th className="px-5 py-3.5 font-bold">Student</th>
                         <th className="px-5 py-3.5 font-bold">Amount</th>
@@ -409,11 +409,11 @@ const Dashboard = () => {
                         <th className="px-5 py-3.5 font-bold text-right">Time</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-fd-gray-100">
+                    <tbody className="divide-y divide-line">
                       {transactions.map((transaction) => {
                         const isMpesa = transaction.source === 'MPESA';
                         return (
-                          <tr key={transaction.id} className="hover:bg-surface-light transition-colors">
+                          <tr key={transaction.id} className="hover:bg-paper transition-colors">
                             <td className="px-5 py-3.5 font-mono-brand text-xs text-text-muted">{transaction.id}</td>
                             <td className="px-5 py-3.5">
                               <div className="font-bold text-text-main">{transaction.studentName}</div>
