@@ -23,7 +23,7 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-fd-canvas font-display text-fd-gray-900 antialiased">
+    <div className="min-h-screen bg-white font-display text-gray-900 antialiased">
       <LandingNav />
       <main>
         <Hero />

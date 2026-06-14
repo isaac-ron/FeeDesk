@@ -61,7 +61,7 @@ const HowItWorks = () => {
   const [ctaRef, ctaVisible] = useReveal();
 
   return (
-    <section id="how-it-works" className="relative overflow-hidden bg-fd-gray-900 py-20 text-white sm:py-24 lg:py-28">
+    <section id="how-it-works" className="relative overflow-hidden bg-gray-900 py-20 text-white sm:py-24 lg:py-28">
       <div
         aria-hidden="true"
         className="fd-glow-pulse pointer-events-none absolute -top-40 right-[-10%] h-96 w-96 rounded-full"

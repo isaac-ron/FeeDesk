@@ -23,7 +23,7 @@ const LandingNav = () => {
     <header
       className={`sticky top-0 z-50 w-full transition-all duration-300 ${
         scrolled
-          ? 'bg-fd-canvas/95 backdrop-blur-xl border-b border-white/[0.06] shadow-lg shadow-black/30'
+          ? 'bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm'
           : 'bg-transparent'
       }`}
     >
@@ -39,8 +39,8 @@ const LandingNav = () => {
             height="36"
             className="h-9 w-9"
           />
-          <span className="font-header text-xl font-semibold tracking-tight text-white">
-            Fee<span className="text-fd-blue-300">Desk</span>
+          <span className="font-header text-xl font-semibold tracking-tight text-gray-950">
+            Fee<span className="text-primary">Desk</span>
           </span>
         </a>
 
@@ -49,7 +49,7 @@ const LandingNav = () => {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-fd-gray-400 transition-colors duration-150 hover:text-white"
+              className="text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-gray-900"
             >
               {link.label}
             </a>
@@ -59,13 +59,13 @@ const LandingNav = () => {
         <div className="hidden items-center gap-3 md:flex">
           <Link
             to="/login"
-            className="text-sm font-medium text-fd-gray-400 transition-colors duration-150 hover:text-white"
+            className="text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-gray-900"
           >
             Log in
           </Link>
           <a
             href="#contact"
-            className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/25 transition-all duration-200 hover:bg-primary-hover hover:shadow-primary/35 hover:shadow-xl"
+            className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-primary/20 transition-all duration-200 hover:bg-primary-hover hover:shadow-md hover:shadow-primary/25"
           >
             Request a Demo
           </a>
@@ -73,7 +73,7 @@ const LandingNav = () => {
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 md:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100 md:hidden"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
           onClick={() => setOpen(o => !o)}
@@ -85,23 +85,23 @@ const LandingNav = () => {
       </nav>
 
       {open && (
-        <div className="border-t border-white/[0.08] bg-fd-canvas/95 backdrop-blur-xl px-4 py-4 md:hidden">
+        <div className="border-t border-gray-100 bg-white px-4 py-4 md:hidden">
           <div className="flex flex-col gap-1">
             {navLinks.map(link => (
               <a
                 key={link.href}
                 href={link.href}
                 onClick={closeMenu}
-                className="rounded-lg px-3 py-3 text-base font-medium text-fd-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                className="rounded-lg px-3 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-900"
               >
                 {link.label}
               </a>
             ))}
-            <div className="mt-2 flex flex-col gap-2 border-t border-white/[0.08] pt-3">
+            <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-3">
               <Link
                 to="/login"
                 onClick={closeMenu}
-                className="rounded-full border border-white/20 px-5 py-2.5 text-center text-sm font-medium text-fd-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                className="rounded-full border border-gray-200 px-5 py-2.5 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
               >
                 Log in
               </Link>

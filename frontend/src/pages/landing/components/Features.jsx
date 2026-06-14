@@ -36,12 +36,14 @@ const secondaryFeatures = [
   },
 ];
 
+const cardBase = 'group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-gray-900 transition-all duration-300 hover:border-blue-600/40 hover:shadow-lg hover:shadow-blue-900/20 hover:-translate-y-1';
+
 const PrimaryCard = ({ feature, delay }) => {
   const [ref, visible] = useReveal();
   return (
     <div
       ref={ref}
-      className={`reveal fd-card-ink group relative overflow-hidden rounded-2xl p-7 transition-all duration-300 hover:-translate-y-1 ${visible ? 'reveal-visible' : ''}`}
+      className={`reveal ${cardBase} p-7 ${visible ? 'reveal-visible' : ''}`}
       style={{ transitionDelay: visible ? `${delay}ms` : '0ms' }}
     >
       <span className="material-symbols-outlined mb-5 text-3xl text-fd-blue-400 transition-all duration-300 group-hover:text-fd-blue-300">
@@ -50,7 +52,7 @@ const PrimaryCard = ({ feature, delay }) => {
       <h3 className="font-header text-xl font-bold text-white">
         {feature.title}
       </h3>
-      <p className="mt-3 text-base leading-relaxed text-fd-gray-400">
+      <p className="mt-3 text-base leading-relaxed text-gray-400">
         {feature.body}
       </p>
     </div>
@@ -62,7 +64,7 @@ const SecondaryCard = ({ feature, delay }) => {
   return (
     <div
       ref={ref}
-      className={`reveal fd-card-ink group relative overflow-hidden rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 ${visible ? 'reveal-visible' : ''}`}
+      className={`reveal ${cardBase} p-5 ${visible ? 'reveal-visible' : ''}`}
       style={{ transitionDelay: visible ? `${delay}ms` : '0ms' }}
     >
       <span className="material-symbols-outlined mb-4 text-xl text-fd-blue-400 transition-all duration-300 group-hover:text-fd-blue-300">
@@ -71,7 +73,7 @@ const SecondaryCard = ({ feature, delay }) => {
       <h3 className="font-header text-base font-bold text-white">
         {feature.title}
       </h3>
-      <p className="mt-2 text-sm leading-relaxed text-fd-gray-500">
+      <p className="mt-2 text-sm leading-relaxed text-gray-500">
         {feature.body}
       </p>
     </div>
@@ -82,7 +84,7 @@ const Features = () => {
   const [headerRef, headerVisible] = useReveal();
 
   return (
-    <section id="features" className="relative overflow-hidden bg-fd-gray-950 py-20 sm:py-24 lg:py-28">
+    <section id="features" className="relative overflow-hidden bg-gray-950 py-20 sm:py-24 lg:py-28">
       {/* Mesh overlay */}
       <div aria-hidden="true" className="fd-mesh pointer-events-none absolute inset-0" />
 
@@ -94,7 +96,7 @@ const Features = () => {
           <h2 className="font-header text-3xl font-extrabold tracking-tight text-white text-balance sm:text-4xl lg:text-5xl">
             One platform. Every payment channel.
           </h2>
-          <p className="mt-5 text-lg leading-relaxed text-fd-gray-400">
+          <p className="mt-5 text-lg leading-relaxed text-gray-400">
             FeeDesk replaces the spreadsheet, the WhatsApp group, and the late-night
             reconciliation — with one bursar-friendly dashboard.
           </p>
