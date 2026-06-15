@@ -105,6 +105,16 @@ const transactionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  // How much of this transaction's overpayment (unallocatedAmount) has since
+  // been drawn down to pay later charges (e.g. next term's fees) by the credit
+  // rollover. Spendable credit on a txn = unallocatedAmount - creditApplied.
+  // Tracking consumption here makes the rollover idempotent and prevents the
+  // same overpayment being applied twice. See services/creditService.js.
+  creditApplied: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 }, {
   timestamps: true

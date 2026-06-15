@@ -207,6 +207,16 @@ const publishStructure = async (req, res) => {
 
     await recomputeManyStudentBalances(students.map((s) => s._id));
 
+    // Roll any existing overpayment credit forward onto the fees just published,
+    // so a student who overpaid a previous term auto-pays this one. Never let a
+    // credit hiccup fail the publish itself.
+    try {
+      const { applyCreditForStudents } = require('../services/creditService');
+      await applyCreditForStudents(students.map((s) => s._id), { performedBy: req.user._id });
+    } catch (e) {
+      console.error('[Publish] credit rollover failed:', e.message);
+    }
+
     recordAudit({
       school: structure.school,
       user: req.user._id,
