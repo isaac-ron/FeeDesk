@@ -16,7 +16,7 @@
  * School.code (exact, uppercased). Dry-runs by default — pass APPLY=true to
  * actually save.
  */
-require('dotenv').config();
+require('./config/env');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const School = require('./models/School');

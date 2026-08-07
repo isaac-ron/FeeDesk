@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const School = require('./models/School');
 const Student = require('./models/Student');
 const Transaction = require('./models/Transaction');
-require('dotenv').config();
+require('./config/env');
 
 async function testMpesaFlow() {
   try {

@@ -22,7 +22,7 @@
  * The token host defaults to https://uat.buni.kcbgroup.com; override with
  * $env:KCB_API_URL (gateway) or $env:KCB_TOKEN_URL (full /token URL).
  */
-require('dotenv').config();
+require('./config/env');
 const mongoose = require('mongoose');
 const bankService = require('./services/bankService');
 

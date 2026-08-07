@@ -9,7 +9,7 @@
  *   MONGO_URI='...' node backend/scripts/backfill-admission-normalized.js
  *   MONGO_URI='...' APPLY=true node backend/scripts/backfill-admission-normalized.js
  */
-require('dotenv').config();
+require('../config/env');
 const mongoose = require('mongoose');
 const Student = require('../models/Student');
 const { normalizeRef } = require('../utils/matchUtils');

@@ -5,7 +5,7 @@ const http = require("http");
 const {Server} = require("socket.io");
 const helmet = require("helmet");
 const morgan = require("morgan");
-require("dotenv").config();
+require('./config/env'); // must precede any require that reads process.env
 const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 const { apiLimiter, authLimiter } = require('./middleware/securityMiddleware');
@@ -13,6 +13,7 @@ const { startFeeReminderJob } = require('./jobs/feeReminderJob');
 const { startTermRolloverJob } = require('./jobs/termRolloverJob');
 const { startPaymentWorker } = require('./workers/paymentWorker');
 const { startSmsWorker } = require('./workers/smsWorker');
+const { verifyRedisEvictionPolicy } = require('./config/redis');
 
 const app = express();
 const server = http.createServer(app);
@@ -152,6 +153,9 @@ connectDB().then(() => {
       startPaymentWorker(io);
       startSmsWorker();
       console.log('BullMQ workers started');
+
+      // Best-effort — warns if queued payments could be evicted. Never throws.
+      verifyRedisEvictionPolicy();
     } catch (err) {
       console.error('BullMQ worker startup failed (Redis may be unavailable):', err.message);
       console.error('Webhook payments will NOT be processed until Redis is connected.');

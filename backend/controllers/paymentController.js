@@ -12,6 +12,13 @@ const { learnFromMatch } = require('../services/matchingService');
 const { normalise } = require('../services/paymentNormalizer');
 const { getPaymentQueue, getSmsQueue } = require('../queues');
 const { recordAudit } = require('../services/auditService');
+const {
+  recordInbound,
+  markEnqueued,
+  markDuplicate,
+  markRejected,
+  markFailed,
+} = require('../services/inboundEventService');
 
 /**
  * Creates ledger entries for payment allocations. Used by manual payment
@@ -144,46 +151,92 @@ const mpesaValidation = async (req, res) => {
  * @route   POST /api/mpesa/confirmation
  * @access  Public (Safaricom Only)
  *
- * Non-negotiable #1: Respond within 5 seconds. Normalise → enqueue → 200.
+ * Non-negotiable #1: Respond within 5 seconds. Persist → normalise → enqueue → 200.
  * The PaymentWorker handles matching, allocation, ledger, and SMS async.
+ *
+ * The first thing we do is write the raw payload to the InboundEvent log. Only
+ * once the money is on disk do we try to parse or queue it — so a Redis outage
+ * costs us a delay, not a payment.
+ *
+ * Two failure classes, two answers:
+ *   - A malformed payload will never succeed no matter how often it is re-sent,
+ *     so it gets a 200 and is marked REJECTED. Retrying it would be noise.
+ *   - An infrastructure failure might well succeed on the next attempt, so it
+ *     gets a 503 and is marked FAILED. Safaricom's C2B retry behaviour is not
+ *     something to rely on, which is exactly why the event log — not the status
+ *     code — is the real safety net here. `scripts/replayInboundEvents.js`
+ *     recovers these regardless of whether Safaricom re-sends.
  */
 const mpesaConfirmation = async (req, res) => {
   console.log('\n========== MPESA CONFIRMATION RECEIVED ==========');
   console.log('Timestamp:', new Date().toISOString());
 
-  try {
-    const { TransID, TransAmount, BillRefNumber, BusinessShortCode } = req.body;
+  const { TransID, TransAmount, BillRefNumber, BusinessShortCode } = req.body || {};
 
+  // 1. Durably record the delivery before anything else can fail.
+  let event;
+  try {
+    event = await recordInbound({
+      provider: 'MPESA',
+      channel: 'C2B',
+      req,
+      externalRef: TransID,
+      amount: TransAmount !== undefined ? parseFloat(TransAmount) : null,
+    });
+  } catch (err) {
+    // We could not even write it down. Do not claim we received it.
+    console.error('MPESA Confirmation — edge log write failed:', err.message);
+    return res.status(503).json({ ResultCode: 1, ResultDesc: 'Temporarily unavailable' });
+  }
+
+  try {
+    // 2. Structural validation — permanently unprocessable, do not ask for a resend.
     if (!TransID || !TransAmount || !BillRefNumber || !BusinessShortCode) {
-      console.error('Missing required fields:', { TransID, TransAmount, BillRefNumber, BusinessShortCode });
+      const missing = Object.entries({ TransID, TransAmount, BillRefNumber, BusinessShortCode })
+        .filter(([, v]) => !v).map(([k]) => k).join(', ');
+      console.error('Missing required fields:', missing);
+      await markRejected(event, `Missing required fields: ${missing}`);
       return res.json({ ResultCode: 1, ResultDesc: 'Missing required fields' });
     }
 
-    // Quick idempotency check — light DB read before enqueuing
+    // 3. Idempotency check — light DB read before enqueuing
     const existing = await Transaction.findOne({ transactionId: TransID });
     if (existing) {
       console.log(`Duplicate ${TransID} — ignoring`);
+      await markDuplicate(event);
       return res.json({ ResultCode: 0, ResultDesc: 'Duplicate' });
     }
 
-    // Normalise into internal shape
-    const normalised = normalise('MPESA', req.body);
+    // 4. Normalise into internal shape. A parse failure is a payload/parser
+    //    problem, not a transient one — reject rather than invite a resend.
+    let normalised;
+    try {
+      normalised = normalise('MPESA', req.body);
+    } catch (parseErr) {
+      console.error('MPESA normalisation failed:', parseErr.message);
+      await markRejected(event, `Normalisation failed: ${parseErr.message}`);
+      return res.json({ ResultCode: 1, ResultDesc: 'Unprocessable payload' });
+    }
 
-    // Enqueue for async processing — respond 200 immediately
+    // 5. Enqueue for async processing — respond 200 immediately
     const queue = getPaymentQueue();
     await queue.add('mpesa-c2b', {
       ...normalised,
       paybillNumber: BusinessShortCode,
+      inboundEventId: event._id.toString(),
     }, {
       jobId: `mpesa-${TransID}`, // prevents duplicate jobs on Safaricom retries
     });
 
     console.log(`Enqueued MPESA C2B: ${TransID} KES ${TransAmount}`);
+    await markEnqueued(event);
     res.json({ ResultCode: 0, ResultDesc: 'Received' });
   } catch (error) {
+    // Infrastructure failure (Redis unreachable, Mongo blip). The payload is
+    // already safe in the event log, so this is recoverable either way.
     console.error('MPESA Confirmation Error:', error.message);
-    // Still 200 so Safaricom stops retrying
-    res.json({ ResultCode: 0, ResultDesc: 'Error but received' });
+    await markFailed(event, error.message);
+    res.status(503).json({ ResultCode: 1, ResultDesc: 'Temporarily unavailable' });
   }
 };
 
@@ -194,16 +247,24 @@ const mpesaConfirmation = async (req, res) => {
  */
 const mpesaRegisterUrl = async (req, res) => {
   try {
-    const baseUrl = process.env.API_BASE_URL;
-    if (!baseUrl) {
+    const rawBaseUrl = process.env.API_BASE_URL;
+    if (!rawBaseUrl) {
       return res.status(400).json({
         success: false,
         message: 'API_BASE_URL environment variable not set',
       });
     }
 
+    // Strip trailing slashes. An API_BASE_URL ending in "/" would otherwise
+    // register "https://host//api/payments/confirmation" with Safaricom, and a
+    // callback that 404s on a double slash is near-impossible to diagnose from
+    // this side — it looks exactly like Safaricom never calling at all.
+    const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+
     const validationUrl = `${baseUrl}/api/payments/validation`;
     const confirmationUrl = `${baseUrl}/api/payments/confirmation`;
+
+    console.log(`🔗 [MPESA] Registering C2B URLs:\n   validation:   ${validationUrl}\n   confirmation: ${confirmationUrl}`);
 
     const result = await mpesaService.registerC2bUrls({
       validationUrl,
@@ -307,10 +368,21 @@ const stkCallback = async (req, res) => {
   console.log('\n========== STK PUSH CALLBACK ==========');
   console.log('Timestamp:', new Date().toISOString());
 
+  // Record first — same reasoning as mpesaConfirmation. An STK callback is the
+  // only notification we get that a parent-initiated push actually succeeded.
+  let event;
+  try {
+    event = await recordInbound({ provider: 'MPESA', channel: 'STK', req });
+  } catch (err) {
+    console.error('[STK] Edge log write failed:', err.message);
+    return res.status(503).json({ ResultCode: 1, ResultDesc: 'Temporarily unavailable' });
+  }
+
   try {
     const parsed = mpesaService.parseStkCallback(req.body);
     if (!parsed) {
       console.warn('[STK] Could not parse callback body');
+      await markRejected(event, 'Unparseable STK callback body');
       return res.json({ ResultCode: 0, ResultDesc: 'Received' });
     }
 
@@ -325,6 +397,11 @@ const stkCallback = async (req, res) => {
         pushLog.resultDesc = parsed.resultDesc;
         await pushLog.save();
       }
+      // A cancelled or failed push is a legitimate terminal outcome, not an
+      // error — there is no money to recover, so it is never replayed.
+      await markRejected(event, `STK not successful: ${parsed.resultDesc}`, {
+        school: pushLog?.school || null,
+      });
       return res.json({ ResultCode: 0, ResultDesc: 'Received' });
     }
 
@@ -334,6 +411,7 @@ const stkCallback = async (req, res) => {
     const existing = await Transaction.findOne({ transactionId: transId });
     if (existing) {
       console.log(`[STK] Duplicate ${transId} — skipping`);
+      await markDuplicate(event, { externalRef: transId, school: pushLog?.school || null });
       return res.json({ ResultCode: 0, ResultDesc: 'Duplicate' });
     }
 
@@ -354,15 +432,22 @@ const stkCallback = async (req, res) => {
       rawPayload: req.body,
       schoolId: pushLog?.school?.toString() || null,
       pushLogId: pushLog?._id?.toString() || null,
+      inboundEventId: event._id.toString(),
     }, {
       jobId: `stk-${transId}`,
     });
 
     console.log(`Enqueued STK callback: ${transId} KES ${parsed.amount}`);
+    await markEnqueued(event, {
+      externalRef: transId,
+      amount: parsed.amount,
+      school: pushLog?.school || null,
+    });
     res.json({ ResultCode: 0, ResultDesc: 'Received' });
   } catch (error) {
     console.error('[STK] Callback error:', error.message);
-    res.json({ ResultCode: 0, ResultDesc: 'Error but received' });
+    await markFailed(event, error.message);
+    res.status(503).json({ ResultCode: 1, ResultDesc: 'Temporarily unavailable' });
   }
 };
 
@@ -795,13 +880,24 @@ const bankWebhookHandler = async (req, res) => {
     };
   };
 
-  try {
-    // 1. Validate provider
-    if (!['EQUITY', 'KCB', 'COOP'].includes(provider)) {
-      return res.status(400).json({ ResultCode: 1, ResultDesc: 'Invalid bank provider' });
-    }
+  // 1. Validate provider before anything else — an unknown provider is a
+  //    misrouted request, not a bank notification, and has nothing to log.
+  if (!['EQUITY', 'KCB', 'COOP'].includes(provider)) {
+    return res.status(400).json({ ResultCode: 1, ResultDesc: 'Invalid bank provider' });
+  }
 
-    // 2. Identify school (lightweight read — needed for auth validation)
+  // 2. Durably record the delivery before parsing, auth checks or queueing.
+  //    See mpesaConfirmation for the reasoning behind the two failure classes.
+  let event;
+  try {
+    event = await recordInbound({ provider, channel: 'BANK_IPN', req });
+  } catch (err) {
+    console.error(`[${provider}] Edge log write failed:`, err.message);
+    return res.status(503).json(ack(false, 'Temporarily unavailable'));
+  }
+
+  try {
+    // 3. Identify school (lightweight read — needed for auth validation)
     let accountIdentifier;
     if (provider === 'EQUITY') {
       // Jenga IPN carries the school account as transaction.billNumber (with
@@ -815,6 +911,7 @@ const bankWebhookHandler = async (req, res) => {
     }
 
     if (!accountIdentifier) {
+      await markRejected(event, 'Missing account identifier');
       return res.status(400).json(ack(false, 'Missing account identifier'));
     }
 
@@ -826,10 +923,15 @@ const bankWebhookHandler = async (req, res) => {
     });
 
     if (!school) {
+      // Recoverable by configuration rather than by resend: once the school's
+      // bank integration is set up, this event can be replayed deliberately
+      // (replayInboundEvents.js --include-rejected). Left REJECTED so it never
+      // replays automatically against a still-unconfigured account.
+      await markRejected(event, `No active ${provider} integration for account ${accountIdentifier}`);
       return res.status(404).json(ack(false, 'School not configured for this bank account'));
     }
 
-    // 3. Validate webhook auth.
+    // 4. Validate webhook auth.
     //    EQUITY (Jenga): HTTP Basic Auth — pass the raw `Authorization` header.
     //    KCB:            SHA256withRSA over body — pass the signature header.
     let authMaterial;
@@ -847,34 +949,58 @@ const bankWebhookHandler = async (req, res) => {
     const enforceSig = process.env.BANK_WEBHOOK_SIGNATURE_REQUIRED === 'true';
 
     if (!isValid && enforceSig) {
-      return res.status(403).json(ack(false, provider === 'EQUITY' ? 'Invalid Basic Auth' : 'Invalid signature'));
+      const reason = provider === 'EQUITY' ? 'Invalid Basic Auth' : 'Invalid signature';
+      await markRejected(event, reason, { school: school._id });
+      return res.status(403).json(ack(false, reason));
     }
 
-    // 4. Normalise payload into internal shape
-    const normalised = normalise(provider, req.body, school);
+    // 5. Normalise payload into internal shape. A parse failure here means the
+    //    provider's shape is not what bankService expects — a parser bug, not a
+    //    transient one. Reject, then fix the parser and replay from the log.
+    let normalised;
+    try {
+      normalised = normalise(provider, req.body, school);
+    } catch (parseErr) {
+      console.error(`[${provider}] Normalisation failed:`, parseErr.message);
+      await markRejected(event, `Normalisation failed: ${parseErr.message}`, { school: school._id });
+      return res.status(400).json(ack(false, 'Unprocessable payload'));
+    }
 
-    // 4a. Drop FAILED Jenga IPNs — JengaHQ delivers both SUCCESS and FAILED
+    // 5a. Drop FAILED Jenga IPNs — JengaHQ delivers both SUCCESS and FAILED
     //     by default; we never want to allocate a failed payment.
     if (provider === 'EQUITY' && normalised.status && normalised.status !== 'SUCCESS') {
       console.log(`[EQUITY] Skipping ${normalised.status} IPN ref=${normalised.ref}`);
+      await markRejected(event, `Non-success IPN status: ${normalised.status}`, {
+        school: school._id,
+        externalRef: normalised.ref ? String(normalised.ref) : null,
+        amount: Number.isFinite(normalised.amount) ? normalised.amount : null,
+      });
       return res.json(ack(true, 'Notification received (non-success status ignored)'));
     }
 
-    // 5. Enqueue for async processing — respond immediately
+    // 6. Enqueue for async processing — respond immediately
     const queue = getPaymentQueue();
     await queue.add(`bank-${provider.toLowerCase()}`, {
       ...normalised,
       schoolId: school._id.toString(),
+      inboundEventId: event._id.toString(),
     }, {
       jobId: `bank-${normalised.ref}`,
     });
 
     console.log(`Enqueued ${provider} bank payment: ${normalised.ref} KES ${normalised.amount}`);
+    await markEnqueued(event, {
+      school: school._id,
+      externalRef: normalised.ref ? String(normalised.ref) : null,
+      amount: Number.isFinite(normalised.amount) ? normalised.amount : null,
+    });
     res.json(ack(true, 'Notification received successfully'));
   } catch (error) {
+    // Infrastructure failure. The payload is already durable in the event log,
+    // so a 503 here costs a delay rather than a payment.
     console.error('BANK WEBHOOK ERROR:', error.message);
-    // Still 200 so the bank stops retrying
-    res.json(ack(true, 'Received'));
+    await markFailed(event, error.message);
+    res.status(503).json(ack(false, 'Temporarily unavailable'));
   }
 };
 

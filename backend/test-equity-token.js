@@ -25,7 +25,7 @@
  *
  * Host defaults to https://uat.finserve.africa; override with $env:EQUITY_API_URL.
  */
-require('dotenv').config();
+require('./config/env');
 const mongoose = require('mongoose');
 const bankService = require('./services/bankService');
 

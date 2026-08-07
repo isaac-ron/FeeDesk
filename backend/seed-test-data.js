@@ -1,5 +1,5 @@
 // Seed test data for dashboard demo
-require('dotenv').config();
+require('./config/env');
 const mongoose = require('mongoose');
 const School = require('./models/School');
 const Student = require('./models/Student');

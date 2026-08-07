@@ -1,5 +1,5 @@
 // Quick diagnostic to check what's in the database
-require('dotenv').config();
+require('./config/env');
 const mongoose = require('mongoose');
 const School = require('./models/School');
 const Student = require('./models/Student');

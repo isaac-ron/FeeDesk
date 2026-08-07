@@ -24,7 +24,7 @@
  *   POST {API_BASE_URL}/api/payments/bank/validate/kcb
  * Share both URLs with buni@kcbgroup.com for BUNI-side registration.
  */
-require('dotenv').config();
+require('./config/env');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const School = require('./models/School');

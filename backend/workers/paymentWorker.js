@@ -7,6 +7,7 @@ const LedgerEntry = require('../models/LedgerEntry');
 const StudentFee = require('../models/StudentFee');
 const { allocatePayment } = require('../services/paymentAllocationService');
 const { findStudentMatches } = require('../services/matchingService');
+const { markProcessedByRef } = require('../services/inboundEventService');
 const { getSmsQueue } = require('../queues');
 
 // PaymentWorker — processes every inbound payment callback asynchronously.
@@ -32,10 +33,14 @@ const processPayment = async (job) => {
 
   console.log(`\n[PaymentWorker] Processing ${provider} payment: ${ref} KES ${amount}`);
 
-  // 1. Idempotency — skip if we already processed this transaction
+  // 1. Idempotency — skip if we already processed this transaction.
+  //    This is a check-then-act, so it is advisory only: the authoritative
+  //    guard is the unique { school, transactionId } index, enforced at the
+  //    Transaction.create below. See the E11000 handling there.
   const existing = await Transaction.findOne({ transactionId: ref });
   if (existing) {
     console.log(`[PaymentWorker] Duplicate ${ref} — skipping`);
+    await markProcessedByRef(ref);
     return { status: 'duplicate', ref };
   }
 
@@ -80,27 +85,43 @@ const processPayment = async (job) => {
   }
 
   // 4. Create Transaction record
-  const newTransaction = await Transaction.create({
-    school: school?._id || null,
-    transactionId: ref,
-    student: student?._id || null,
-    amount: parseFloat(amount),
-    source: provider === 'MPESA' ? 'MPESA' : 'BANK_TRANSFER',
-    type: 'CREDIT',
-    // Always PENDING at creation. A matched payment is flipped to COMPLETED
-    // only after its allocation + ledger writes actually persist (see below).
-    // This way, if the worker crashes mid-allocation, the retry's idempotency
-    // check finds a visible PENDING record to review — not a deceptive
-    // COMPLETED-but-unapplied one that silently leaves the student still owing.
-    status: 'PENDING',
-    reference: accountRef,
-    paidBy: paidBy || 'Unknown',
-    phoneNumber: phone || null,
-    matchMethod,
-    matchConfidence,
-    suggestedMatches,
-    metadata: { provider, rawPayload, processedAt: new Date() },
-  });
+  let newTransaction;
+  try {
+    newTransaction = await Transaction.create({
+      school: school?._id || null,
+      transactionId: ref,
+      student: student?._id || null,
+      amount: parseFloat(amount),
+      source: provider === 'MPESA' ? 'MPESA' : 'BANK_TRANSFER',
+      type: 'CREDIT',
+      // Always PENDING at creation. A matched payment is flipped to COMPLETED
+      // only after its allocation + ledger writes actually persist (see below).
+      // This way, if the worker crashes mid-allocation, the retry's idempotency
+      // check finds a visible PENDING record to review — not a deceptive
+      // COMPLETED-but-unapplied one that silently leaves the student still owing.
+      status: 'PENDING',
+      reference: accountRef,
+      paidBy: paidBy || 'Unknown',
+      phoneNumber: phone || null,
+      matchMethod,
+      matchConfidence,
+      suggestedMatches,
+      metadata: { provider, rawPayload, processedAt: new Date() },
+    });
+  } catch (err) {
+    // E11000 = the unique { school, transactionId } index rejected this write,
+    // meaning another delivery of the same payment won the race between the
+    // findOne above and this create. That is a duplicate, not a failure — if we
+    // let it throw, BullMQ would retry three times and then park a healthy
+    // payment in the failed set. Two channels reporting the same transaction
+    // (a Safaricom retry, or a webhook racing a replay) makes this routine.
+    if (err.code === 11000) {
+      console.log(`[PaymentWorker] Duplicate ${ref} caught at insert — skipping`);
+      await markProcessedByRef(ref);
+      return { status: 'duplicate', ref };
+    }
+    throw err;
+  }
 
   // 5. Matched → allocate, ledger, SMS
   if (student) {
@@ -179,10 +200,12 @@ const processPayment = async (job) => {
       console.error(`[PaymentWorker] Failed to enqueue SMS: ${err.message}`);
     }
 
+    await markProcessedByRef(ref);
     return { status: 'completed', ref, studentName: student.name, allocations: allocations.length };
   }
 
-  // 6. Unmatched → suspense
+  // 6. Unmatched → suspense. Still a successful ingest — the money is recorded
+  //    and visible to the bursar, it just needs a student attached.
   console.warn(`[PaymentWorker] Unmatched payment ${ref} for account "${accountRef}" — suspense`);
   if (io) {
     io.emit('unknown_payment', {
@@ -194,6 +217,7 @@ const processPayment = async (job) => {
     });
   }
 
+  await markProcessedByRef(ref);
   return { status: 'unmatched', ref, accountRef };
 };
 
@@ -209,8 +233,16 @@ const startPaymentWorker = (socketIo) => {
     console.log(`[PaymentWorker] Job ${job.id} done: ${result.status} (${result.ref})`);
   });
 
-  worker.on('failed', (job, err) => {
+  worker.on('failed', async (job, err) => {
     console.error(`[PaymentWorker] Job ${job?.id} failed: ${err.message}`);
+
+    // BullMQ fires this on every attempt. Only once retries are exhausted is the
+    // payment genuinely stuck — reflect that back onto the edge log so it shows
+    // up in triage and can be replayed once the cause is fixed.
+    const attempts = job?.opts?.attempts ?? 1;
+    if (job && job.attemptsMade >= attempts && job.data?.ref) {
+      await markProcessedByRef(job.data.ref, { error: `Worker failed after ${attempts} attempts: ${err.message}` });
+    }
   });
 
   console.log('[PaymentWorker] Started — listening for payment.received jobs');
