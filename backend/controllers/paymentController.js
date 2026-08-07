@@ -10,8 +10,9 @@ const mpesaService = require('../services/mpesaService');
 const { allocatePayment } = require('../services/paymentAllocationService');
 const { learnFromMatch } = require('../services/matchingService');
 const { normalise } = require('../services/paymentNormalizer');
-const { getPaymentQueue, getSmsQueue } = require('../queues');
+const { getPaymentQueue, getSmsQueue, addWithDeadline } = require('../queues');
 const { recordAudit } = require('../services/auditService');
+const { formatNairobiTime } = require('../utils/time');
 const {
   recordInbound,
   markEnqueued,
@@ -96,7 +97,7 @@ const finalizeMpesaPayment = async ({
         admissionNumber: student.admissionNumber,
         amount: newTransaction.amount,
         source: sourceLabel,
-        time: new Date().toLocaleTimeString(),
+        time: formatNairobiTime(),
         status: 'COMPLETED',
       });
     }
@@ -118,7 +119,7 @@ const finalizeMpesaPayment = async ({
         reference,
         amount: newTransaction.amount,
         source: sourceLabel,
-        time: new Date().toLocaleTimeString(),
+        time: formatNairobiTime(),
       });
     }
   }
@@ -220,7 +221,7 @@ const mpesaConfirmation = async (req, res) => {
 
     // 5. Enqueue for async processing — respond 200 immediately
     const queue = getPaymentQueue();
-    await queue.add('mpesa-c2b', {
+    await addWithDeadline(queue, 'mpesa-c2b', {
       ...normalised,
       paybillNumber: BusinessShortCode,
       inboundEventId: event._id.toString(),
@@ -420,7 +421,7 @@ const stkCallback = async (req, res) => {
 
     // Enqueue for async processing
     const queue = getPaymentQueue();
-    await queue.add('mpesa-stk', {
+    await addWithDeadline(queue, 'mpesa-stk', {
       provider: 'MPESA',
       ref: transId,
       amount: parsed.amount,
@@ -978,9 +979,33 @@ const bankWebhookHandler = async (req, res) => {
       return res.json(ack(true, 'Notification received (non-success status ignored)'));
     }
 
+    // 5b. Sanity-check what the normaliser produced BEFORE queueing it.
+    //
+    // Bank payload shapes are the least-verified thing in this system — they
+    // were written from vendor documentation, and documentation has been wrong
+    // more than once here. When a real IPN arrives in a shape we do not expect,
+    // every field silently comes back undefined: `ref` is undefined, `amount` is
+    // NaN, and the job enqueues anyway. The worker then fails on validation, but
+    // it has no ref to correlate back, so the event sits at ENQUEUED forever
+    // with no error — invisible to triage and skipped by the replay script.
+    //
+    // Failing loudly here turns "the docs were wrong" into a REJECTED row that
+    // names the missing fields, with the raw payload right beside it.
+    const missing = [];
+    if (!normalised.ref) missing.push('transaction reference');
+    if (!Number.isFinite(normalised.amount)) missing.push('amount');
+    if (missing.length) {
+      const reason =
+        `Unrecognised ${provider} IPN shape — could not extract ${missing.join(' and ')}. ` +
+        `Payload keys: ${Object.keys(req.body || {}).join(', ') || '(none)'}`;
+      console.error(`[${provider}] ${reason}`);
+      await markRejected(event, reason, { school: school._id });
+      return res.status(400).json(ack(false, 'Unprocessable payload'));
+    }
+
     // 6. Enqueue for async processing — respond immediately
     const queue = getPaymentQueue();
-    await queue.add(`bank-${provider.toLowerCase()}`, {
+    await addWithDeadline(queue, `bank-${provider.toLowerCase()}`, {
       ...normalised,
       schoolId: school._id.toString(),
       inboundEventId: event._id.toString(),
@@ -1223,7 +1248,7 @@ const matchPayment = async (req, res) => {
         admissionNumber: student.admissionNumber,
         amount: transaction.amount,
         source: transaction.source,
-        time: new Date().toLocaleTimeString(),
+        time: formatNairobiTime(),
         status: 'COMPLETED',
       });
     }

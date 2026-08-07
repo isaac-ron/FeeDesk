@@ -109,3 +109,42 @@ test('resolveClientIp strips the IPv4-mapped IPv6 prefix', () => {
   assert.equal(resolveClientIp({ socket: { remoteAddress: '1.1.1.1' } }), '1.1.1.1');
   assert.equal(resolveClientIp({}), '');
 });
+
+// ── Observed against a genuine Safaricom C2B callback, 2026-08-07 ────────────
+// Real deliveries arrive with a TWO-hop X-Forwarded-For chain, because
+// Safaricom fronts its dispatcher with Envoy and injects its own internal
+// address before ours ever sees it:
+//
+//   X-Forwarded-For: 10.197.136.41, 196.201.212.69
+//   User-Agent:      Apache-HttpClient/4.5.14 (Java/1.8.0_361)
+//   Soapaction:      "ConfirmC2BPayment"
+//
+// The leftmost entry is a private RFC-1918 address that matches nothing in the
+// allowlist. With `app.set('trust proxy', 1)` Express resolves req.ip to the
+// rightmost entry — the address that actually connected to our edge — which is
+// the Safaricom range we allow. These tests pin that behaviour: if someone
+// raises the trust-proxy hop count, req.ip slides to the private address and
+// production starts 403-ing real payments.
+test('production: real Safaricom XFF chain resolves to the allowed public IP', () => {
+  process.env.NODE_ENV = 'production';
+  // What Express yields for req.ip under `trust proxy: 1` for the chain above.
+  const r = invoke({
+    ip: '196.201.212.69',
+    headers: { 'x-forwarded-for': '10.197.136.41, 196.201.212.69' },
+  });
+  assert.equal(r.passed, true, 'a genuine Safaricom callback must not be blocked');
+  assert.equal(r.blocked, false);
+});
+
+test('production: the private leftmost hop alone would be blocked', () => {
+  process.env.NODE_ENV = 'production';
+  // Guards the misconfiguration: if trust proxy is raised so req.ip becomes the
+  // RFC-1918 hop, real callbacks get rejected. Assert that IP is not allowed, so
+  // the danger is explicit rather than discovered in production.
+  const r = invoke({
+    ip: '10.197.136.41',
+    headers: { 'x-forwarded-for': '10.197.136.41, 196.201.212.69' },
+  });
+  assert.equal(r.blocked, true);
+  assert.equal(r.code, 403);
+});

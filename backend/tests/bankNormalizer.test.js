@@ -71,3 +71,85 @@ test('normalise(EQUITY) yields accountRef from customer.reference + canonical ph
   assert.equal(n.phone, '254700111222');
   assert.equal(n.sourceLabel, 'EQUITY BANK');
 });
+
+// ── Equity Jenga IPN — full payload exactly as Equity documents it ───────────
+// Every field from the vendor's own sample, including the ones we ignore, so a
+// shape change shows up here rather than in production.
+const jengaDocSample = (over = {}) => ({
+  callbackType: 'IPN',
+  customer: { name: 'John Doe', mobileNumber: '254712345678', reference: '071648816466242' },
+  transaction: {
+    date: '2023-10-11 14:15:20',
+    reference: '328411183176',
+    paymentMode: 'MPESA',
+    amount: 150,
+    currency: 'KES',
+    billNumber: 'INVZCF',
+    servedBy: 'EQ',
+    additionalInfo: 'CARD',
+    orderAmount: 150,
+    serviceCharge: 5.25,
+    orderCurrency: 'KES',
+    status: 'SUCCESS',
+    remarks: '00:Approved',
+    ...over,
+  },
+  bank: { reference: '328411183176', transactionType: 'C', account: null },
+});
+
+test('Equity: vendor sample payload maps every field we depend on', () => {
+  const n = normalise('EQUITY', jengaDocSample(), {});
+  assert.equal(n.ref, '328411183176');          // transaction.reference
+  assert.equal(n.amount, 150);                  // numeric, not the string form
+  assert.equal(n.accountRef, '071648816466242'); // customer.reference (payer)
+  assert.equal(n.paidBy, 'John Doe');
+  assert.equal(n.phone, '254712345678');
+  assert.equal(n.status, 'SUCCESS');
+  assert.equal(n.paymentMode, 'MPESA');
+  assert.equal(n.rawPayload.transaction.serviceCharge, 5.25); // nothing dropped
+});
+
+test('Equity: schoolAccount falls back to bank.account when billNumber is absent', () => {
+  const body = jengaDocSample();
+  delete body.transaction.billNumber;
+  body.bank.account = '0100200300';
+  const r = bankService.processWebhook('EQUITY', body, {});
+  assert.equal(r.schoolAccount, '0100200300');
+});
+
+test('Equity: every documented paymentMode survives normalisation', () => {
+  for (const mode of ['CARD', 'MPESA', 'PWE', 'EQUITEL', 'PAYPAL']) {
+    const n = normalise('EQUITY', jengaDocSample({ paymentMode: mode }), {});
+    assert.equal(n.paymentMode, mode);
+    assert.equal(n.amount, 150);
+  }
+});
+
+test('Equity: FAILED status is preserved so the edge handler can drop it', () => {
+  // bankWebhookHandler refuses to enqueue anything whose status !== SUCCESS.
+  // If this ever normalised to undefined, failed payments would be allocated.
+  const n = normalise('EQUITY', jengaDocSample({ status: 'FAILED' }), {});
+  assert.equal(n.status, 'FAILED');
+});
+
+test('Equity: transaction.date is read as Nairobi time on ANY server timezone', () => {
+  // Regression guard. Jenga sends "YYYY-MM-DD HH:mm:ss" with no zone, and it is
+  // EAT. A bare new Date() resolves it against the host timezone, so this same
+  // payment used to land 3 hours late on a UTC host (Render/Docker) — and after
+  // 21:00 EAT, on the wrong DAY, which silently corrupts daily reconciliation.
+  // Asserting an absolute instant makes this fail anywhere the offset is lost.
+  const n = normalise('EQUITY', jengaDocSample(), {});
+  assert.equal(new Date(n.receivedAt).toISOString(), '2023-10-11T11:15:20.000Z');
+});
+
+test('Equity: a date that already carries a zone is respected, not double-shifted', () => {
+  const n = normalise('EQUITY', jengaDocSample({ date: '2023-10-11T14:15:20Z' }), {});
+  assert.equal(new Date(n.receivedAt).toISOString(), '2023-10-11T14:15:20.000Z');
+});
+
+test('Equity: an unparseable date degrades to "now" rather than Invalid Date', () => {
+  // An Invalid Date would reach Transaction.createdAt and poison every
+  // date-ranged report; falling back to now keeps the payment usable.
+  const n = normalise('EQUITY', jengaDocSample({ date: 'not-a-date' }), {});
+  assert.ok(!Number.isNaN(new Date(n.receivedAt).getTime()));
+});

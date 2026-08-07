@@ -5,6 +5,7 @@ const Student = require('../models/Student');
 const StudentFee = require('../models/StudentFee');
 const SmsLog = require('../models/SmsLog');
 const Term = require('../models/Term');
+const { formatNairobiTime } = require('../utils/time');
 const { protect } = require('../middleware/authMiddleware');
 
 // @desc    Get dashboard statistics
@@ -145,11 +146,7 @@ router.get('/transactions', protect, async (req, res) => {
       admissionNumber: txn.student?.admissionNumber || txn.reference || 'N/A',
       amount: txn.amount,
       source: txn.source || 'CASH',
-      time: new Date(txn.createdAt).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      }),
+      time: formatNairobiTime(txn.createdAt),
       timestamp: txn.createdAt
     }));
 

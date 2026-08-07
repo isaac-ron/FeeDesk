@@ -120,6 +120,16 @@ const buildJob = async (event) => {
     if (event.provider === 'EQUITY' && normalised.status && normalised.status !== 'SUCCESS') {
       return { skip: `non-success IPN status (${normalised.status})` };
     }
+    // Same guard the edge handler applies. Re-enqueuing a payload we still
+    // cannot parse just recreates the stuck job — and a job with an undefined
+    // ref cannot be deduplicated or correlated. Report it instead, so the
+    // operator knows the normaliser is what needs fixing first.
+    if (!normalised.ref || !Number.isFinite(normalised.amount)) {
+      return {
+        skip: `still unparseable — no ${!normalised.ref ? 'reference' : 'amount'}; `
+            + `fix the ${event.provider} normaliser, then re-run (payload keys: ${Object.keys(body).join(', ')})`,
+      };
+    }
     return {
       name: `bank-${event.provider.toLowerCase()}`,
       data: { ...normalised, schoolId: school._id.toString(), inboundEventId: event._id.toString() },
@@ -147,7 +157,25 @@ const buildJob = async (event) => {
   const statuses = ['FAILED', 'RECEIVED'];
   if (includeRejected) statuses.push('REJECTED');
 
-  const query = { status: { $in: statuses } };
+  // Stale ENQUEUED rows are recovered too. A job that was handed to BullMQ but
+  // never reached a terminal state leaves its event at ENQUEUED — seen when a
+  // payload normalised to an undefined ref, so the worker had nothing to
+  // correlate the failure back to. Those rows are invisible in triage and were
+  // silently skipped here, which is the worst combination: money received,
+  // nothing recorded, nothing retried.
+  //
+  // Only rows older than the threshold qualify, so genuinely in-flight jobs are
+  // left alone. Anything already turned into a Transaction gets closed out
+  // rather than re-sent, by the existing check below.
+  const staleMinutes = Number(process.env.STALE_MINUTES || 15);
+  const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+  const query = {
+    $or: [
+      { status: { $in: statuses } },
+      { status: 'ENQUEUED', createdAt: { $lt: staleBefore } },
+    ],
+  };
   if (process.env.PROVIDER) query.provider = process.env.PROVIDER.toUpperCase();
   if (process.env.REF) query.externalRef = process.env.REF;
   if (process.env.SINCE) {
@@ -162,6 +190,7 @@ const buildJob = async (event) => {
   await mongoose.connect(uri);
   console.log(`[replay] Connected. Mode: ${apply ? 'APPLY' : 'DRY RUN'}`);
   console.log(`[replay] Statuses: ${statuses.join(', ')}${includeRejected ? '  (including REJECTED)' : ''}`);
+  console.log(`[replay] Also sweeping ENQUEUED rows older than ${staleMinutes} min (STALE_MINUTES to change)`);
 
   const events = await InboundEvent.find(query).sort({ createdAt: 1 });
   console.log(`[replay] ${events.length} candidate event(s)\n`);

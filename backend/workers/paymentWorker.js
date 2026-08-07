@@ -8,6 +8,7 @@ const StudentFee = require('../models/StudentFee');
 const { allocatePayment } = require('../services/paymentAllocationService');
 const { findStudentMatches } = require('../services/matchingService');
 const { markProcessedByRef } = require('../services/inboundEventService');
+const InboundEvent = require('../models/InboundEvent');
 const { getSmsQueue } = require('../queues');
 
 // PaymentWorker — processes every inbound payment callback asynchronously.
@@ -240,8 +241,26 @@ const startPaymentWorker = (socketIo) => {
     // payment genuinely stuck — reflect that back onto the edge log so it shows
     // up in triage and can be replayed once the cause is fixed.
     const attempts = job?.opts?.attempts ?? 1;
-    if (job && job.attemptsMade >= attempts && job.data?.ref) {
-      await markProcessedByRef(job.data.ref, { error: `Worker failed after ${attempts} attempts: ${err.message}` });
+    if (!job || job.attemptsMade < attempts) return;
+
+    const reason = `Worker failed after ${attempts} attempts: ${err.message}`;
+    if (job.data?.ref) {
+      await markProcessedByRef(job.data.ref, { error: reason });
+      return;
+    }
+
+    // No ref to correlate on — which is itself the symptom of a payload we could
+    // not parse. Fall back to the event id the edge handler stamped on the job,
+    // so the row still lands in triage instead of sitting at ENQUEUED forever.
+    if (job.data?.inboundEventId) {
+      try {
+        await InboundEvent.updateOne(
+          { _id: job.data.inboundEventId, status: { $in: ['RECEIVED', 'ENQUEUED'] } },
+          { $set: { status: 'FAILED', error: reason } }
+        );
+      } catch (e) {
+        console.error(`[PaymentWorker] Could not mark inbound event failed: ${e.message}`);
+      }
     }
   });
 

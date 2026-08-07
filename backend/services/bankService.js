@@ -206,7 +206,7 @@ class EquityBankService {
       schoolAccount: transaction.billNumber || bank.account,
       paidBy: customer.name,
       phoneNumber: customer.mobileNumber,
-      timestamp: new Date(transaction.date || Date.now()),
+      timestamp: this._parseJengaDate(transaction.date),
       source: 'BANK_TRANSFER',
       provider: 'EQUITY',
       status: transaction.status,
@@ -214,6 +214,33 @@ class EquityBankService {
       remarks: transaction.remarks,
       rawPayload: payload,
     };
+  }
+
+  /**
+   * Jenga sends `transaction.date` as "YYYY-MM-DD HH:mm:ss" with no zone, and
+   * the value is Nairobi local time (UTC+3).
+   *
+   * `new Date("2023-10-11 14:15:20")` resolves that against the SERVER's
+   * timezone, so the same payment gets a different instant on a UTC host
+   * (Render, Docker) than on a developer's EAT machine — a silent 3-hour drift
+   * that also pushes late-evening payments onto the wrong day, breaking daily
+   * reconciliation. Pin the offset explicitly, as the MPESA and KCB parsers
+   * already do.
+   */
+  _parseJengaDate(raw) {
+    if (!raw) return new Date();
+    const s = String(raw).trim();
+    // "YYYY-MM-DD HH:mm:ss" (seconds optional) → same instant on any host.
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (m) {
+      const [, y, mo, d, h, mi, se] = m;
+      const parsed = new Date(`${y}-${mo}-${d}T${h}:${mi}:${se || '00'}+03:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    // Already carries a zone (ISO with Z or ±hh:mm), or an unrecognised shape —
+    // let Date decide, falling back to now rather than an Invalid Date.
+    const fallback = new Date(s);
+    return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
   }
 
   /**
