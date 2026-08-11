@@ -22,4 +22,28 @@ const formatNairobiTime = (date = new Date()) =>
 const formatNairobiDate = (date = new Date()) =>
   new Date(date).toLocaleDateString('en-KE', { timeZone: NAIROBI });
 
-module.exports = { formatNairobiTime, formatNairobiDate, NAIROBI };
+/**
+ * "05 Sep" — Nairobi calendar day, short form for SMS bodies.
+ *
+ * Built from a fixed month table rather than `toLocaleDateString`, whose short
+ * month names vary with the host's ICU build ("Sep" vs "Sept"). SMS is billed
+ * per 160-character GSM-7 segment, so copy that silently grows by a character
+ * on some hosts is a real cost bug. These names are also GSM-7 safe.
+ */
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const formatNairobiShortDate = (date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: NAIROBI,
+    day: '2-digit',
+    month: 'numeric',
+  }).formatToParts(new Date(date));
+
+  const day = parts.find((p) => p.type === 'day')?.value;
+  const month = Number(parts.find((p) => p.type === 'month')?.value);
+  if (!day || !month) return '';
+
+  return `${day} ${SHORT_MONTHS[month - 1]}`;
+};
+
+module.exports = { formatNairobiTime, formatNairobiDate, formatNairobiShortDate, NAIROBI };

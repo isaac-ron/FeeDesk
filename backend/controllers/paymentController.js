@@ -8,6 +8,7 @@ const bankService = require('../services/bankService');
 const { sendPaymentReceipt } = require('../services/smsService');
 const mpesaService = require('../services/mpesaService');
 const { allocatePayment } = require('../services/paymentAllocationService');
+const { getTermBreakdown } = require('../services/balanceService');
 const { learnFromMatch } = require('../services/matchingService');
 const { normalise } = require('../services/paymentNormalizer');
 const { getPaymentQueue, getSmsQueue, addWithDeadline } = require('../queues');
@@ -80,7 +81,7 @@ const finalizeMpesaPayment = async ({
 
   if (student) {
     const oldBalance = student.currentBalance;
-    await allocatePayment({
+    const { unallocated } = await allocatePayment({
       studentId: student._id,
       amount: parseFloat(amount),
       transaction: newTransaction,
@@ -102,6 +103,13 @@ const finalizeMpesaPayment = async ({
       });
     }
 
+    // Term/arrears split for the receipt copy. Best-effort: a failure here must
+    // not cost the guardian their receipt, so fall back to the plain total.
+    const breakdown = await getTermBreakdown(student._id).catch((err) => {
+      console.warn(`⚠️  [MPESA] Term breakdown failed for ${student.name}: ${err.message}`);
+      return null;
+    });
+
     sendPaymentReceipt({
       guardianPhone: student.guardianPhone,
       transactionPhone: phoneNumber,
@@ -109,7 +117,8 @@ const finalizeMpesaPayment = async ({
       amount,
       newBalance: student.currentBalance,
       reference: transactionId,
-      source: sourceLabel,
+      breakdown,
+      credit: unallocated,
     }).catch((err) => console.error('❌ [MPESA] SMS error:', err.message));
   } else {
     const io = req.app.get('io');
@@ -533,7 +542,7 @@ const recordBankPayment = async (req, res) => {
     
     console.log('[STEP 4] Allocating payment to fee ledger...');
     const oldBalance = student.currentBalance;
-    const { allocations } = await allocatePayment({ studentId: student._id, amount, transaction });
+    const { allocations, unallocated } = await allocatePayment({ studentId: student._id, amount, transaction });
 
     // Create ledger entries for each allocation
     await createLedgerEntriesForAllocations({
@@ -559,6 +568,7 @@ const recordBankPayment = async (req, res) => {
         newBalance: refreshed.currentBalance,
         reference: transactionId,
         source: source || 'Bank Transfer',
+        credit: unallocated,
         schoolId: req.school._id.toString(),
         studentId: student._id.toString(),
       });
@@ -640,7 +650,7 @@ const recordCashPayment = async (req, res) => {
     
     console.log('[STEP 3] Allocating payment to fee ledger...');
     const oldBalance = student.currentBalance;
-    const { allocations } = await allocatePayment({ studentId: student._id, amount, transaction });
+    const { allocations, unallocated } = await allocatePayment({ studentId: student._id, amount, transaction });
 
     // Create ledger entries for each allocation
     await createLedgerEntriesForAllocations({
@@ -666,6 +676,7 @@ const recordCashPayment = async (req, res) => {
         newBalance: refreshed.currentBalance,
         reference: transactionId,
         source: 'Cash',
+        credit: unallocated,
         schoolId: req.school._id.toString(),
         studentId: student._id.toString(),
       });
@@ -1206,7 +1217,7 @@ const matchPayment = async (req, res) => {
     }).catch((e) => console.error('[match] learnFromMatch error:', e.message));
 
     // Allocate to fee lines + create ledger entries
-    const { allocations } = await allocatePayment({
+    const { allocations, unallocated } = await allocatePayment({
       studentId: student._id,
       amount: transaction.amount,
       transaction,
@@ -1232,6 +1243,7 @@ const matchPayment = async (req, res) => {
         newBalance: (await Student.findById(student._id).select('currentBalance')).currentBalance,
         reference: transaction.transactionId,
         source: transaction.source,
+        credit: unallocated,
         schoolId: transaction.school.toString(),
         studentId: student._id.toString(),
       });

@@ -1,6 +1,7 @@
 const { Worker } = require('bullmq');
 const { getRedisConnection } = require('../config/redis');
-const { sendPaymentReceipt, sendFeeReminder, sendSms } = require('../services/smsService');
+const { sendPaymentReceipt, sendFeeReminder, sendSms, buildPaymentReceiptBody } = require('../services/smsService');
+const { getTermBreakdown } = require('../services/balanceService');
 const SmsLog = require('../models/SmsLog');
 
 // SMSWorker — processes SMS jobs asynchronously via BullMQ.
@@ -23,18 +24,25 @@ const processSms = async (job) => {
 
   switch (type) {
     case 'payment_receipt': {
-      const { guardianPhone, transactionPhone, studentName, amount, newBalance, reference, source } = job.data;
+      const { guardianPhone, transactionPhone, studentName, amount, newBalance, reference, studentId, credit } = job.data;
       recipientPhone = guardianPhone || transactionPhone;
-      success = await sendPaymentReceipt({
-        guardianPhone,
-        transactionPhone,
-        studentName,
-        amount,
-        newBalance,
-        reference,
-        source,
-      });
-      messageBody = `Payment receipt for ${studentName} — KES ${amount}`;
+
+      // Resolve the term/arrears split here rather than at enqueue time so the
+      // copy reflects the ledger as it stands when the SMS actually goes out —
+      // jobs can sit in the queue behind a retry backoff. Best-effort: a failure
+      // degrades the message to a plain total, it never drops the receipt.
+      let breakdown = null;
+      if (studentId) {
+        try {
+          breakdown = await getTermBreakdown(studentId);
+        } catch (err) {
+          console.warn(`[SMSWorker] Term breakdown failed for student ${studentId}: ${err.message}`);
+        }
+      }
+
+      const receiptArgs = { studentName, amount, reference, newBalance, breakdown, credit };
+      success = await sendPaymentReceipt({ guardianPhone, transactionPhone, ...receiptArgs });
+      messageBody = buildPaymentReceiptBody(receiptArgs);
       break;
     }
 

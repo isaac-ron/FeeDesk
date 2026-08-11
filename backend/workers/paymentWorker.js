@@ -196,6 +196,7 @@ const processPayment = async (job) => {
         newBalance,
         reference: ref,
         source: sourceLabel,
+        credit: unallocated,
       });
     } catch (err) {
       console.error(`[PaymentWorker] Failed to enqueue SMS: ${err.message}`);
