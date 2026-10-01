@@ -1,8 +1,8 @@
-# SchoolPayERP
+# FeeDesk
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**SchoolPayERP** is a comprehensive enterprise resource planning system designed specifically for educational institutions to manage student payments, fees, and financial transactions efficiently. Built with a modern tech stack and featuring multi-tenant architecture, it enables multiple schools to operate independently within a single deployment.
+**FeeDesk** is a comprehensive enterprise resource planning system designed specifically for educational institutions to manage student payments, fees, and financial transactions efficiently. Built with a modern tech stack and featuring multi-tenant architecture, it enables multiple schools to operate independently within a single deployment.
 
 ## 🌟 Key Features
 
